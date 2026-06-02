@@ -33,11 +33,18 @@ export default function Home() {
           </p>
         </Link>
 
-        {/* Atalhos das próximas fases (ainda desativados) */}
-        <div className="rounded-lg border border-dashed border-zinc-300 bg-white/50 p-5 text-zinc-400">
+        {/* Atalho que já funciona */}
+        <Link
+          href="/calendario"
+          className="rounded-lg border border-zinc-200 bg-white p-5 transition hover:shadow-md"
+        >
           <h2 className="font-semibold">📅 Calendário</h2>
-          <p className="mt-1 text-sm">Em breve (Fase 3).</p>
-        </div>
+          <p className="mt-1 text-sm text-zinc-600">
+            Programe publicações por cliente, redes, mídia e data.
+          </p>
+        </Link>
+
+        {/* Atalhos das próximas fases (ainda desativados) */}
         <div className="rounded-lg border border-dashed border-zinc-300 bg-white/50 p-5 text-zinc-400">
           <h2 className="font-semibold">📊 Relatório</h2>
           <p className="mt-1 text-sm">Em breve (Fase 4).</p>

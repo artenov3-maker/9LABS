@@ -52,12 +52,27 @@ npm run lint     # checagem de estilo de código
 > deixados prontos. **Nenhuma chamada de API ainda.** Integração fica para uma fase futura.
 
 ## Roadmap (uma fase por vez)
-- **Fase 0 (atual)**: fundação — projeto Next.js rodando, este CLAUDE.md, GitHub conectado, Supabase + tabelas.
-- **Fase 1**: telas de Clientes & Contas Sociais.
-- **Fase 2**: Biblioteca de Mídia (upload p/ Storage + link público).
+- **Fase 0**: ✅ fundação — Next.js rodando, CLAUDE.md, GitHub, Supabase + tabelas.
+- **Fase 1**: ✅ telas de Clientes & Contas Sociais.
+- **Fase 2**: ✅ Biblioteca de Mídia (upload p/ Storage + link público).
 - **Fase 3**: Calendário & Agendamento de posts.
 - **Fase 4**: Relatório por status/cliente.
-- **Fase 5 (futuro)**: integração real com Post for Me.
+- **Fase 5 — Reorganização da navegação (IA centrada no cliente)**: ver visão abaixo.
+- **Fase 6 (futuro)**: integração real com Post for Me.
+
+### Decisão de arquitetura (combinada com o dono)
+Estamos construindo as funções em **telas soltas** primeiro (Clientes, Mídias, Calendário no
+topo) só para validar que funcionam. A **navegação final é centrada no cliente** e será
+reorganizada numa fase própria, sem perder as funções já feitas (só muda a "embalagem"):
+
+```
+Clientes
+   └── [Cliente]
+          ├── Dados
+          ├── Contas sociais
+          ├── Mídias do cliente
+          └── Programar publicação  (sobe mídia + legenda + data; depois liga no Post for Me)
+```
 
 ## Segredos / Git
 - Chaves do Supabase ficam em `.env.local` (NÃO versionar — já coberto pelo `.gitignore`).
