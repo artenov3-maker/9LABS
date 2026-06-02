@@ -1,219 +1,175 @@
-"use client"; // Esta página roda no navegador (tem formulário e busca dados ao abrir).
+"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-
-// Formato de um cliente, igual às colunas da tabela "clientes" no banco.
-type Cliente = {
-  id: string;
-  nome: string;
-  observacoes: string | null;
-  ativo: boolean;
-  created_at: string;
-};
+import { monograma, useClienteAtivo } from "@/context/ClienteAtivo";
 
 export default function ClientesPage() {
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState<string | null>(null);
+  const router = useRouter();
+  const { clientes, recarregar, selecionarCliente, carregando } = useClienteAtivo();
 
-  // Campos do formulário de novo cliente.
+  const [busca, setBusca] = useState("");
+  const [contagemContas, setContagemContas] = useState<Record<string, number>>({});
+
+  // Formulário de novo cliente.
   const [nome, setNome] = useState("");
   const [observacoes, setObservacoes] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
-  // Busca a lista de clientes no banco (mais novos primeiro).
-  async function carregarClientes() {
-    setCarregando(true);
-    setErro(null);
-    const { data, error } = await supabase
-      .from("clientes")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      setErro(error.message);
-    } else {
-      setClientes(data ?? []);
+  // Conta quantas contas sociais cada cliente tem (uma consulta só).
+  async function carregarContagens() {
+    const { data } = await supabase.from("contas_sociais").select("cliente_id");
+    const mapa: Record<string, number> = {};
+    for (const linha of data ?? []) {
+      mapa[linha.cliente_id] = (mapa[linha.cliente_id] ?? 0) + 1;
     }
-    setCarregando(false);
+    setContagemContas(mapa);
   }
 
-  // Ao abrir a página, carrega os clientes uma vez.
   useEffect(() => {
-    carregarClientes();
-  }, []);
+    carregarContagens();
+  }, [clientes]);
 
-  // Cadastra um novo cliente.
+  const filtrados = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return clientes;
+    return clientes.filter((c) => c.nome.toLowerCase().includes(q));
+  }, [clientes, busca]);
+
   async function adicionarCliente(evento: React.FormEvent) {
     evento.preventDefault();
-    if (!nome.trim()) return; // não salva sem nome
-
+    if (!nome.trim()) return;
     setSalvando(true);
     setErro(null);
     const { error } = await supabase.from("clientes").insert({
       nome: nome.trim(),
       observacoes: observacoes.trim() || null,
     });
-
-    if (error) {
-      setErro(error.message);
-    } else {
+    if (error) setErro(error.message);
+    else {
       setNome("");
       setObservacoes("");
-      await carregarClientes(); // atualiza a lista
+      await recarregar();
     }
     setSalvando(false);
   }
 
-  // Arquiva ou reativa um cliente (muda a coluna "ativo").
-  async function alternarAtivo(cliente: Cliente) {
-    setErro(null);
-    const { error } = await supabase
-      .from("clientes")
-      .update({ ativo: !cliente.ativo })
-      .eq("id", cliente.id);
-    if (error) setErro(error.message);
-    else await carregarClientes();
-  }
-
-  // Exclui um cliente (pede confirmação antes).
-  async function excluirCliente(cliente: Cliente) {
-    const ok = window.confirm(
-      `Excluir o cliente "${cliente.nome}"? Isso também remove suas contas sociais e posts. Não dá para desfazer.`,
-    );
-    if (!ok) return;
-
-    setErro(null);
-    const { error } = await supabase.from("clientes").delete().eq("id", cliente.id);
-    if (error) setErro(error.message);
-    else await carregarClientes();
+  // Escolher um cliente: vira o cliente ativo e vai para o Painel.
+  function abrirCliente(id: string) {
+    selecionarCliente(id);
+    router.push("/");
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Clientes</h1>
-        <p className="mt-1 text-zinc-600">
-          Cadastre os clientes da agência. Clique no nome para editar e gerenciar as
-          contas sociais.
-        </p>
-      </div>
+    <div className="space-y-10">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-4xl font-light tracking-tight">Clientes</h1>
+          <p className="mt-1 text-sm text-muted">
+            Escolha um cliente para trabalhar ou cadastre um novo.
+          </p>
+        </div>
+        <input
+          type="text"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar cliente..."
+          className="w-56 rounded-sm border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-ink"
+        />
+      </header>
 
-      {/* Formulário de novo cliente */}
+      {/* Novo cliente */}
       <form
         onSubmit={adicionarCliente}
-        className="space-y-4 rounded-lg border border-zinc-200 bg-white p-5"
+        className="space-y-4 rounded-md border border-line bg-surface p-6"
       >
-        <h2 className="font-semibold">Novo cliente</h2>
-
-        <div>
-          <label className="block text-sm font-medium text-zinc-700">
-            Nome do cliente <span className="text-red-500">*</span>
-          </label>
+        <div className="micro-label">Novo cliente</div>
+        <div className="grid gap-4 sm:grid-cols-2">
           <input
             type="text"
             value={nome}
             onChange={(e) => setNome(e.target.value)}
-            placeholder="Ex.: Padaria do João"
-            className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500"
+            placeholder="Nome do cliente"
+            className="rounded-sm border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-ink"
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-zinc-700">
-            Observações (opcional)
-          </label>
-          <textarea
+          <input
+            type="text"
             value={observacoes}
             onChange={(e) => setObservacoes(e.target.value)}
-            placeholder="Anotações livres sobre o cliente"
-            rows={2}
-            className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500"
+            placeholder="Observações (opcional)"
+            className="rounded-sm border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-ink"
           />
         </div>
-
+        {erro && <p className="text-sm text-st-falhou">Erro: {erro}</p>}
         <button
           type="submit"
           disabled={salvando || !nome.trim()}
-          className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-sm bg-ink px-5 py-2.5 text-sm font-medium text-surface transition hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-40"
         >
           {salvando ? "Salvando..." : "Cadastrar cliente"}
         </button>
       </form>
 
-      {/* Mensagem de erro, se houver */}
-      {erro && (
-        <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
-          Ocorreu um erro: {erro}
-        </p>
-      )}
-
-      {/* Lista de clientes */}
-      <div className="space-y-3">
-        <h2 className="font-semibold">
-          Clientes cadastrados{" "}
-          <span className="text-sm font-normal text-zinc-500">
-            ({clientes.length})
-          </span>
-        </h2>
+      {/* Grade de clientes */}
+      <section className="space-y-4">
+        <div className="micro-label">
+          {filtrados.length} cliente{filtrados.length === 1 ? "" : "s"}
+        </div>
 
         {carregando ? (
-          <p className="text-sm text-zinc-500">Carregando...</p>
-        ) : clientes.length === 0 ? (
-          <p className="rounded-md border border-dashed border-zinc-300 px-4 py-6 text-center text-sm text-zinc-500">
-            Nenhum cliente ainda. Cadastre o primeiro acima. 👆
+          <p className="text-sm text-muted">Carregando...</p>
+        ) : filtrados.length === 0 ? (
+          <p className="rounded-md border border-dashed border-line px-4 py-10 text-center text-sm text-muted">
+            {clientes.length === 0
+              ? "Nenhum cliente ainda. Cadastre o primeiro acima."
+              : "Nenhum cliente encontrado para essa busca."}
           </p>
         ) : (
-          <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 bg-white">
-            {clientes.map((cliente) => (
-              <li
-                key={cliente.id}
-                className="flex flex-wrap items-start justify-between gap-4 p-4"
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filtrados.map((c) => (
+              <div
+                key={c.id}
+                className="flex flex-col justify-between rounded-md border border-line bg-surface p-5 transition hover:border-line-strong"
               >
-                <div className="min-w-0">
-                  <Link
-                    href={`/clientes/${cliente.id}`}
-                    className="font-medium text-zinc-900 hover:underline"
-                  >
-                    {cliente.nome}
-                  </Link>
-                  {cliente.observacoes && (
-                    <p className="mt-0.5 text-sm text-zinc-600">
-                      {cliente.observacoes}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex shrink-0 items-center gap-3">
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      cliente.ativo
-                        ? "bg-green-100 text-green-700"
-                        : "bg-zinc-100 text-zinc-500"
-                    }`}
-                  >
-                    {cliente.ativo ? "Ativo" : "Arquivado"}
+                <button
+                  onClick={() => abrirCliente(c.id)}
+                  className="flex items-start gap-3 text-left"
+                >
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm bg-ink font-display text-lg text-surface">
+                    {monograma(c.nome)}
                   </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold">{c.nome}</span>
+                    <span className="mt-0.5 block text-xs text-muted">
+                      {(contagemContas[c.id] ?? 0)} conta
+                      {(contagemContas[c.id] ?? 0) === 1 ? "" : "s"} social
+                      {(contagemContas[c.id] ?? 0) === 1 ? "" : "is"}
+                      {!c.ativo && " · arquivado"}
+                    </span>
+                  </span>
+                </button>
+                <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
                   <button
-                    onClick={() => alternarAtivo(cliente)}
-                    className="text-xs text-zinc-600 hover:text-zinc-900 hover:underline"
+                    onClick={() => abrirCliente(c.id)}
+                    className="text-xs font-medium text-ink hover:underline"
                   >
-                    {cliente.ativo ? "Arquivar" : "Reativar"}
+                    Abrir →
                   </button>
-                  <button
-                    onClick={() => excluirCliente(cliente)}
-                    className="text-xs text-red-600 hover:text-red-800 hover:underline"
+                  <Link
+                    href={`/clientes/${c.id}`}
+                    className="text-xs text-muted hover:text-ink hover:underline"
                   >
-                    Excluir
-                  </button>
+                    Configurar
+                  </Link>
                 </div>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
