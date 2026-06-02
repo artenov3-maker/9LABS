@@ -57,7 +57,7 @@ npm run lint     # checagem de estilo de código
 - **Fase 2**: ✅ Biblioteca de Mídia (upload p/ Storage + link público).
 - **Fase 3**: Calendário & Agendamento de posts.
 - **Fase 4**: Relatório por status/cliente.
-- **Fase 5 — Reorganização da navegação (IA centrada no cliente)**: ver visão abaixo.
+- **Fase 5 — Reorganização da navegação (IA centrada no cliente) + melhorias de design**: ver visão abaixo. (Até aqui o foco é função; polir visual fica para esta fase.)
 - **Fase 6 (futuro)**: integração real com Post for Me.
 
 ### Decisão de arquitetura (combinada com o dono)

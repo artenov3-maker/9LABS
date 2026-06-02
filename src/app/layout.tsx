@@ -57,7 +57,12 @@ export default function RootLayout({
               >
                 Calendário
               </Link>
-              <span className="text-zinc-400">Relatório (em breve)</span>
+              <Link
+                href="/relatorio"
+                className="text-zinc-700 hover:text-black hover:underline"
+              >
+                Relatório
+              </Link>
             </div>
           </nav>
         </header>
