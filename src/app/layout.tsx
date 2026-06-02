@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Archivo } from "next/font/google";
 import Nav from "@/components/Nav";
+import { ClienteAtivoProvider } from "@/context/ClienteAtivo";
 import "./globals.css";
 
 // Serifa editorial (títulos e números grandes).
@@ -33,8 +34,12 @@ export default function RootLayout({
       className={`${fraunces.variable} ${archivo.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-paper text-ink">
-        <Nav />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">{children}</main>
+        <ClienteAtivoProvider>
+          <Nav />
+          <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
+            {children}
+          </main>
+        </ClienteAtivoProvider>
       </body>
     </html>
   );
