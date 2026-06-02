@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import CalendarioMensal from "@/components/CalendarioMensal";
 
 type Cliente = { id: string; nome: string };
 type ContaSocial = {
@@ -204,6 +205,9 @@ export default function CalendarioPage() {
           data/hora.
         </p>
       </div>
+
+      {/* Visão de calendário do mês */}
+      {!carregando && <CalendarioMensal posts={posts} />}
 
       {/* Formulário de nova publicação */}
       <form
