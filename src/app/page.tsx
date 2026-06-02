@@ -1,5 +1,27 @@
 import Link from "next/link";
 
+const ATALHOS = [
+  {
+    href: "/clientes",
+    emoji: "👥",
+    titulo: "Clientes",
+    descricao:
+      "Cadastre os clientes da agência. Dentro de cada um: contas, mídias e publicações.",
+  },
+  {
+    href: "/calendario",
+    emoji: "📅",
+    titulo: "Calendário geral",
+    descricao: "Veja e programe publicações de todos os clientes no calendário.",
+  },
+  {
+    href: "/relatorio",
+    emoji: "📊",
+    titulo: "Relatório geral",
+    descricao: "Acompanhe as publicações por status e por cliente.",
+  },
+];
+
 export default function Home() {
   return (
     <div className="space-y-8">
@@ -10,50 +32,20 @@ export default function Home() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {/* Atalho que já funciona */}
-        <Link
-          href="/clientes"
-          className="rounded-lg border border-zinc-200 bg-white p-5 transition hover:shadow-md"
-        >
-          <h2 className="font-semibold">👥 Clientes</h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            Cadastre os clientes da agência e suas contas sociais.
-          </p>
-        </Link>
-
-        {/* Atalho que já funciona */}
-        <Link
-          href="/midias"
-          className="rounded-lg border border-zinc-200 bg-white p-5 transition hover:shadow-md"
-        >
-          <h2 className="font-semibold">🖼️ Biblioteca de Mídia</h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            Envie fotos e vídeos e gere links públicos.
-          </p>
-        </Link>
-
-        {/* Atalho que já funciona */}
-        <Link
-          href="/calendario"
-          className="rounded-lg border border-zinc-200 bg-white p-5 transition hover:shadow-md"
-        >
-          <h2 className="font-semibold">📅 Calendário</h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            Programe publicações por cliente, redes, mídia e data.
-          </p>
-        </Link>
-
-        {/* Atalho que já funciona */}
-        <Link
-          href="/relatorio"
-          className="rounded-lg border border-zinc-200 bg-white p-5 transition hover:shadow-md"
-        >
-          <h2 className="font-semibold">📊 Relatório</h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            Acompanhe as publicações por status e cliente.
-          </p>
-        </Link>
+      <div className="grid gap-4 sm:grid-cols-3">
+        {ATALHOS.map((a) => (
+          <Link
+            key={a.href}
+            href={a.href}
+            className="group rounded-xl border border-zinc-200 bg-white p-5 transition hover:border-red-300 hover:shadow-md"
+          >
+            <h2 className="font-semibold">
+              <span className="mr-1">{a.emoji}</span>
+              <span className="group-hover:text-red-700">{a.titulo}</span>
+            </h2>
+            <p className="mt-1 text-sm text-zinc-600">{a.descricao}</p>
+          </Link>
+        ))}
       </div>
     </div>
   );

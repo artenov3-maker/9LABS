@@ -5,6 +5,9 @@
   color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
+  /* Cor da marca 9LABS (vermelho). */
+  --brand: #dc2626;
+  --brand-hover: #b91c1c;
 }
 
 @theme inline {
