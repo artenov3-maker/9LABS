@@ -45,7 +45,12 @@ export default function RootLayout({
               >
                 Clientes
               </Link>
-              <span className="text-zinc-400">Mídias (em breve)</span>
+              <Link
+                href="/midias"
+                className="text-zinc-700 hover:text-black hover:underline"
+              >
+                Mídias
+              </Link>
               <span className="text-zinc-400">Calendário (em breve)</span>
               <span className="text-zinc-400">Relatório (em breve)</span>
             </div>
