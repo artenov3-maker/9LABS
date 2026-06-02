@@ -1,24 +1,53 @@
 @import "tailwindcss";
 
-:root {
-  /* App sempre no tema claro (não segue o modo escuro do sistema). */
-  color-scheme: light;
-  --background: #ffffff;
-  --foreground: #171717;
-  /* Cor da marca 9LABS (vermelho). */
-  --brand: #dc2626;
-  --brand-hover: #b91c1c;
+/* ============================================================
+   Design system NOV/// — tokens (cores + tipografia)
+   Disponibiliza utilitários do Tailwind como text-ink, bg-paper,
+   border-line, font-display, etc.
+   ============================================================ */
+@theme {
+  /* Base — tinta e papel */
+  --color-ink: #16140f; /* texto principal, botões primários (preto quente) */
+  --color-ink-soft: #3a372f; /* texto secundário forte */
+  --color-muted: #8a8577; /* texto auxiliar, placeholders, labels */
+  --color-paper: #f6f3ec; /* fundo geral (off-white quente) */
+  --color-surface: #ffffff; /* cards, painéis, inputs */
+  --color-line: #e4ded1; /* hairlines / bordas */
+  --color-line-strong: #cdc6b6; /* bordas em hover/foco */
+
+  /* Status (dessaturados) */
+  --color-st-rascunho: #9a9486;
+  --color-st-agendado: #4a5b6b;
+  --color-st-publicado: #5e7256;
+  --color-st-falhou: #a8513f;
+
+  /* Tipografia (as variáveis --font-* vêm do next/font no layout) */
+  --font-sans: var(--font-archivo);
+  --font-display: var(--font-fraunces);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  /* App sempre no tema claro. */
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-archivo), system-ui, sans-serif;
+}
+
+/* Título/numerais grandes em serifa editorial. */
+.font-display {
+  font-family: var(--font-fraunces), Georgia, serif;
+}
+
+/* Micro-label: rótulo de etapa/seção (CANAIS, STATUS...). */
+.micro-label {
+  font-family: var(--font-archivo), system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-muted);
 }
