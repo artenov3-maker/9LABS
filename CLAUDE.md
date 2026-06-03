@@ -51,6 +51,10 @@ npm run lint     # checagem de estilo de código
 > **Post for Me**: por ora só existem os campos `status`, `id_externo_postforme` e `erro_mensagem`
 > deixados prontos. **Nenhuma chamada de API ainda.** Integração fica para uma fase futura.
 
+> **Desejo do dono (preview):** a pré-visualização do Instagram deve ser **fiel ao resultado real**
+> (proporção/resolução corretas de como o post fica no feed). Hoje fazemos uma aproximação realista
+> (frame 4:5 + chrome do IG). A renderização 100% fiel deve vir com a **integração do Post for Me** (Fase 6).
+
 ## Roadmap (uma fase por vez)
 - **Fase 0**: ✅ fundação — Next.js rodando, CLAUDE.md, GitHub, Supabase + tabelas.
 - **Fase 1**: ✅ telas de Clientes & Contas Sociais.
