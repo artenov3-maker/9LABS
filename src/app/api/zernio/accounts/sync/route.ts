@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { lerCorpo, temChaveZernio, zernioFetch } from "@/lib/zernio";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { garantirProfileZernio } from "@/lib/zernioProfile";
 
 type ContaZernio = {
   _id?: string;
@@ -9,7 +10,8 @@ type ContaZernio = {
   username?: string;
   handle?: string;
   name?: string;
-  profileId?: string;
+  // Na Zernio vem como objeto { _id, name }; aceitamos string também por segurança.
+  profileId?: string | { _id?: string };
 };
 
 const PLATAFORMAS = ["instagram", "facebook", "tiktok"];
@@ -32,8 +34,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, motivo: "Informe clienteId." });
   }
 
+  // Descobre o profile da Zernio deste cliente (para pegar só as contas dele).
+  const prof = await garantirProfileZernio(clienteId);
+  const profileId = prof.profileId;
+
   try {
-    // A Zernio usa perfis internos; listamos todas as contas e ligamos ao cliente atual.
     const resp = await zernioFetch(`/accounts`);
     const corpo = await lerCorpo(resp);
     if (!resp.ok) {
@@ -49,8 +54,11 @@ export async function POST(req: Request) {
 
     let gravadas = 0;
     for (const acc of lista) {
-      // Obs.: na Zernio o profileId vem como objeto interno; para o MVP importamos as
-      // contas disponíveis e ligamos ao cliente atual (por plataforma).
+      // Só importa as contas que pertencem ao profile deste cliente.
+      const accProfId =
+        typeof acc.profileId === "object" ? acc.profileId?._id : acc.profileId;
+      if (profileId && accProfId && accProfId !== profileId) continue;
+
       const plataforma = (acc.platform ?? "").toLowerCase();
       if (!PLATAFORMAS.includes(plataforma)) continue;
       const idZernio = acc._id ?? acc.id;

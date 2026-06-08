@@ -7,3 +7,7 @@
 -- Guarda o "_id" da conta conectada na Zernio (ex.: para enviar o post à conta certa).
 alter table public.contas_sociais
   add column if not exists id_externo_zernio text;
+
+-- Guarda o "_id" do PROFILE da Zernio que representa este cliente (agrupa as contas dele).
+alter table public.clientes
+  add column if not exists id_externo_zernio text;

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { lerCorpo, temChaveZernio, zernioFetch } from "@/lib/zernio";
+import { garantirProfileZernio } from "@/lib/zernioProfile";
 
 // POST /api/zernio/connect  { clienteId, platform }
 // Pede à Zernio um link de autorização (authUrl) para conectar uma conta da rede
@@ -19,9 +20,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, motivo: "Informe clienteId e platform." });
   }
 
+  // Garante que o cliente tenha um profile na Zernio (cria se não tiver).
+  const prof = await garantirProfileZernio(clienteId);
+  if (!prof.ok || !prof.profileId) {
+    return NextResponse.json({
+      ok: false,
+      motivo: prof.motivo ?? "Não foi possível preparar o profile na Zernio.",
+    });
+  }
+
   try {
     const resp = await zernioFetch(
-      `/connect/${platform}?profileId=${encodeURIComponent(clienteId)}`,
+      `/connect/${platform}?profileId=${encodeURIComponent(prof.profileId)}`,
     );
     const corpo = await lerCorpo(resp);
     const authUrl =
