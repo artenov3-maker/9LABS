@@ -33,9 +33,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const resp = await zernioFetch(
-      `/accounts?profileId=${encodeURIComponent(clienteId)}`,
-    );
+    // A Zernio usa perfis internos; listamos todas as contas e ligamos ao cliente atual.
+    const resp = await zernioFetch(`/accounts`);
     const corpo = await lerCorpo(resp);
     if (!resp.ok) {
       return NextResponse.json({ ok: false, status: resp.status, corpo });
@@ -50,8 +49,8 @@ export async function POST(req: Request) {
 
     let gravadas = 0;
     for (const acc of lista) {
-      // Se a conta veio com profileId e não é deste cliente, ignora.
-      if (acc.profileId && acc.profileId !== clienteId) continue;
+      // Obs.: na Zernio o profileId vem como objeto interno; para o MVP importamos as
+      // contas disponíveis e ligamos ao cliente atual (por plataforma).
       const plataforma = (acc.platform ?? "").toLowerCase();
       if (!PLATAFORMAS.includes(plataforma)) continue;
       const idZernio = acc._id ?? acc.id;
