@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   const { data: post, error } = await supabaseServer
     .from("posts_agendados")
     .select(
-      "id, legenda, data_agendada, midias(url_publica), posts_contas(contas_sociais(plataforma, id_externo_zernio))",
+      "id, legenda, data_agendada, midias(url_publica, tipo), posts_contas(contas_sociais(plataforma, id_externo_zernio))",
     )
     .eq("id", postId)
     .single();
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   const p = post as unknown as {
     legenda: string | null;
     data_agendada: string;
-    midias: { url_publica: string } | null;
+    midias: { url_publica: string; tipo: string } | null;
     posts_contas: {
       contas_sociais: { plataforma: string; id_externo_zernio: string | null } | null;
     }[];
@@ -57,14 +57,24 @@ export async function POST(req: Request) {
     });
   }
 
+  // Se a data já passou (ou é "agora"), publica na hora; senão, agenda.
+  const agendadoMs = new Date(p.data_agendada).getTime();
+  const publicarAgora = agendadoMs <= Date.now() + 60_000;
+
   const payload: Record<string, unknown> = {
     content: p.legenda ?? "",
-    scheduledFor: p.data_agendada,
     timezone: "America/Sao_Paulo",
     platforms,
   };
+  if (publicarAgora) {
+    payload.publishNow = true;
+  } else {
+    payload.scheduledFor = p.data_agendada;
+  }
   if (p.midias?.url_publica) {
-    payload.media = [{ url: p.midias.url_publica }];
+    payload.mediaItems = [
+      { url: p.midias.url_publica, type: p.midias.tipo === "video" ? "video" : "image" },
+    ];
   }
 
   try {
