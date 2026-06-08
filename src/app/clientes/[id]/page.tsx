@@ -18,6 +18,7 @@ type ContaSocial = {
   cliente_id: string;
   plataforma: "instagram" | "facebook" | "tiktok";
   usuario_handle: string | null;
+  id_externo_zernio: string | null;
   created_at: string;
 };
 
@@ -47,6 +48,10 @@ export default function ConfiguracoesClientePage() {
     useState<ContaSocial["plataforma"]>("instagram");
   const [handle, setHandle] = useState("");
   const [adicionando, setAdicionando] = useState(false);
+
+  // Zernio (conexão de contas).
+  const [zernioMsg, setZernioMsg] = useState<string | null>(null);
+  const [zernioBusy, setZernioBusy] = useState(false);
 
   const carregarTudo = useCallback(async () => {
     setCarregando(true);
@@ -125,6 +130,56 @@ export default function ConfiguracoesClientePage() {
       .eq("id", conta.id);
     if (error) setErro(error.message);
     else await carregarTudo();
+  }
+
+  // Pede o link de autorização da Zernio e abre numa nova aba.
+  async function conectarZernio(plat: ContaSocial["plataforma"]) {
+    setZernioBusy(true);
+    setZernioMsg(null);
+    try {
+      const resp = await fetch("/api/zernio/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clienteId: clienteId, platform: plat }),
+      });
+      const dados = await resp.json();
+      if (dados.authUrl) {
+        window.open(dados.authUrl, "_blank", "noopener");
+        setZernioMsg(
+          "Abrimos a autorização numa nova aba. Depois de autorizar, clique em “Sincronizar contas”.",
+        );
+      } else {
+        setZernioMsg(`Não veio link. Resposta: ${JSON.stringify(dados)}`);
+      }
+    } catch (e) {
+      setZernioMsg(`Erro: ${(e as Error).message}`);
+    }
+    setZernioBusy(false);
+  }
+
+  // Após autorizar, busca as contas conectadas e grava os IDs.
+  async function sincronizarZernio() {
+    setZernioBusy(true);
+    setZernioMsg(null);
+    try {
+      const resp = await fetch("/api/zernio/accounts/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clienteId }),
+      });
+      const dados = await resp.json();
+      if (dados.ok) {
+        setZernioMsg(
+          `Sincronizado: ${dados.gravadas ?? 0} conta(s) ligada(s) à Zernio.`,
+        );
+        await carregarTudo();
+      } else {
+        setZernioMsg(`Não deu certo: ${dados.motivo ?? JSON.stringify(dados)}`);
+      }
+    } catch (e) {
+      setZernioMsg(`Erro: ${(e as Error).message}`);
+    }
+    setZernioBusy(false);
   }
 
   async function excluirCliente() {
@@ -229,6 +284,11 @@ export default function ConfiguracoesClientePage() {
                   {conta.usuario_handle && (
                     <p className="text-sm text-muted">{conta.usuario_handle}</p>
                   )}
+                  {conta.id_externo_zernio ? (
+                    <p className="text-xs text-st-publicado">✓ conectada à Zernio</p>
+                  ) : (
+                    <p className="text-xs text-muted">não conectada à Zernio</p>
+                  )}
                 </div>
                 <button
                   onClick={() => removerConta(conta)}
@@ -277,6 +337,35 @@ export default function ConfiguracoesClientePage() {
             {adicionando ? "Adicionando..." : "Adicionar conta"}
           </button>
         </form>
+      </section>
+
+      {/* Conectar via Zernio (publicação real) */}
+      <section className="space-y-4 rounded-md border border-line bg-surface p-6">
+        <div className="micro-label">Publicação real (Zernio)</div>
+        <p className="text-sm text-muted">
+          Conecte as redes deste cliente à Zernio para poder publicar de verdade. Você
+          autoriza numa nova aba e depois clica em “Sincronizar contas”.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {(["instagram", "facebook", "tiktok"] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => conectarZernio(p)}
+              disabled={zernioBusy}
+              className="rounded-sm border border-line px-3 py-2 text-sm hover:border-line-strong disabled:opacity-40"
+            >
+              Conectar {REDES[p]}
+            </button>
+          ))}
+          <button
+            onClick={sincronizarZernio}
+            disabled={zernioBusy}
+            className="rounded-sm bg-ink px-3 py-2 text-sm font-medium text-surface hover:bg-ink-soft disabled:opacity-40"
+          >
+            {zernioBusy ? "Processando..." : "Sincronizar contas"}
+          </button>
+        </div>
+        {zernioMsg && <p className="text-sm text-ink-soft">{zernioMsg}</p>}
       </section>
 
       {/* Zona de perigo */}

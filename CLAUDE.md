@@ -4,10 +4,16 @@
 > trabalhar com o dono do projeto.
 
 ## ▶️ RETOMADA — onde paramos (atualizar quando avançar)
-**Status:** Fases 0–5 concluídas. **Fase 6 (publicação real via Zernio) em andamento — sub-passo 6A feito.**
+**Status:** Fases 0–5 concluídas. **Fase 6 (Zernio): TODO O CÓDIGO (6A–6D) PRONTO.** Falta só o dono
+colar a chave + conectar uma conta para o **teste real**.
 
-**Já pronto (6A):** `src/lib/zernio.ts`, rota `src/app/api/zernio/ping/route.ts`, e SQL `supabase/zernio.sql`
-(coluna `id_externo_zernio` em `contas_sociais`). Tudo commitado e no GitHub.
+**Já pronto (6A–6D, commitado):**
+- `src/lib/zernio.ts` (helper server) e `src/lib/supabaseServer.ts` (Supabase no servidor).
+- Rotas: `/api/zernio/ping`, `/connect`, `/accounts/sync`, `/publish`, `/status`, `/webhook`.
+- UI: botões "Conectar [rede]" + "Sincronizar contas" em `/clientes/[id]`; botões "Publicar via Zernio" e
+  "Atualizar status" no editor (`EditorPost`, modo edição).
+- SQL `supabase/zernio.sql` (coluna `id_externo_zernio`).
+- Tudo compila (rotas respondem "Chave ausente" sem a key — esperado).
 
 **Pendências do dono antes de continuar (sem isso o 6B não dá pra testar):**
 1. Criar conta na **Zernio** (zernio.com) e pegar a **API Key** (`sk_...`).
@@ -15,8 +21,10 @@
 3. Rodar `supabase/zernio.sql` no SQL Editor do Supabase.
 4. Reiniciar o `npm run dev` (para ler a nova variável) e conferir `GET /api/zernio/ping` → deve dar `ok: true`.
 
-**Próximo passo de código:** **6B — Conectar contas** (botão em `/clientes/[id]` → `POST /api/zernio/connect`
-devolve `authUrl` → após autorizar, `POST /api/zernio/accounts/sync` grava `id_externo_zernio`). Depois 6C (publicar) e 6D (status).
+**Próximo passo:** TESTE REAL ponta-a-ponta com a chave: (1) ping ok:true, (2) conectar uma conta em
+`/clientes/[id]`, (3) "Sincronizar contas" grava `id_externo_zernio`, (4) editar um post → "Publicar via Zernio",
+(5) conferir no painel da Zernio. Ajustar nomes de campos de mídia/status conforme a resposta real da Zernio
+(o código já devolve o `corpo` cru para facilitar o ajuste).
 
 **Plano completo da Fase 6:** `C:\Users\Nov3\.claude\plans\concurrent-watching-quokka.md` (topo do arquivo).
 

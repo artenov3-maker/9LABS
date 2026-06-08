@@ -85,6 +85,10 @@ export default function EditorPost({
     null,
   );
 
+  // Publicação via Zernio.
+  const [publicandoZernio, setPublicandoZernio] = useState(false);
+  const [zernioMsg, setZernioMsg] = useState<string | null>(null);
+
   // Mídia: menu e modal de biblioteca.
   const [menuMidia, setMenuMidia] = useState(false);
   const [biblioteca, setBiblioteca] = useState(false);
@@ -258,6 +262,52 @@ export default function EditorPost({
 
     setSalvando(false);
     setSucesso(editando ? "editado" : status === "rascunho" ? "rascunho" : "agendado");
+  }
+
+  // Envia o post à Zernio (publicar/agendar de verdade).
+  async function publicarZernio() {
+    if (!postId) return;
+    setPublicandoZernio(true);
+    setZernioMsg(null);
+    try {
+      const resp = await fetch("/api/zernio/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId }),
+      });
+      const dados = await resp.json();
+      if (dados.ok) {
+        setZernioMsg("✓ Enviado para a Zernio! O post foi agendado/publicado de verdade.");
+      } else {
+        setZernioMsg(`Não deu certo: ${dados.motivo ?? JSON.stringify(dados.corpo ?? dados)}`);
+      }
+    } catch (e) {
+      setZernioMsg(`Erro: ${(e as Error).message}`);
+    }
+    setPublicandoZernio(false);
+  }
+
+  // Pergunta à Zernio o estado atual do post e atualiza o status no painel.
+  async function atualizarStatus() {
+    if (!postId) return;
+    setPublicandoZernio(true);
+    setZernioMsg(null);
+    try {
+      const resp = await fetch("/api/zernio/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId }),
+      });
+      const dados = await resp.json();
+      setZernioMsg(
+        dados.novo
+          ? `Status atualizado para: ${dados.novo}.`
+          : `Sem mudança de status. (Zernio: ${dados.statusZernio ?? "?"})`,
+      );
+    } catch (e) {
+      setZernioMsg(`Erro: ${(e as Error).message}`);
+    }
+    setPublicandoZernio(false);
   }
 
   if (carregando) return <p className="text-sm text-muted">Carregando...</p>;
@@ -440,8 +490,28 @@ export default function EditorPost({
         </section>
 
         {erro && <p className="text-sm text-st-falhou">Erro: {erro}</p>}
+        {zernioMsg && <p className="text-sm text-ink-soft">{zernioMsg}</p>}
 
-        <div className="flex items-center justify-end gap-4 border-t border-line pt-5">
+        <div className="flex flex-wrap items-center justify-end gap-4 border-t border-line pt-5">
+          {editando && (
+            <div className="mr-auto flex items-center gap-3">
+              <button
+                onClick={publicarZernio}
+                disabled={publicandoZernio}
+                className="rounded-sm border border-ink px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink hover:text-surface disabled:opacity-40"
+                title="Salve as alterações antes, depois publique de verdade."
+              >
+                {publicandoZernio ? "Enviando..." : "Publicar via Zernio"}
+              </button>
+              <button
+                onClick={atualizarStatus}
+                disabled={publicandoZernio}
+                className="text-sm text-muted hover:text-ink hover:underline disabled:opacity-40"
+              >
+                Atualizar status
+              </button>
+            </div>
+          )}
           {!editando && (
             <button
               onClick={() => salvar("rascunho")}
