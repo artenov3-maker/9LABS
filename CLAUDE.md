@@ -3,6 +3,25 @@
 > Leia este arquivo no início de toda sessão. Ele descreve o projeto, a stack e como
 > trabalhar com o dono do projeto.
 
+## ▶️ RETOMADA — onde paramos (atualizar quando avançar)
+**Status:** Fases 0–5 concluídas. **Fase 6 (publicação real via Zernio) em andamento — sub-passo 6A feito.**
+
+**Já pronto (6A):** `src/lib/zernio.ts`, rota `src/app/api/zernio/ping/route.ts`, e SQL `supabase/zernio.sql`
+(coluna `id_externo_zernio` em `contas_sociais`). Tudo commitado e no GitHub.
+
+**Pendências do dono antes de continuar (sem isso o 6B não dá pra testar):**
+1. Criar conta na **Zernio** (zernio.com) e pegar a **API Key** (`sk_...`).
+2. Colar a chave no `.env.local` na linha `ZERNIO_API_KEY=` (arquivo já tem a linha pronta; é segredo, fora do Git).
+3. Rodar `supabase/zernio.sql` no SQL Editor do Supabase.
+4. Reiniciar o `npm run dev` (para ler a nova variável) e conferir `GET /api/zernio/ping` → deve dar `ok: true`.
+
+**Próximo passo de código:** **6B — Conectar contas** (botão em `/clientes/[id]` → `POST /api/zernio/connect`
+devolve `authUrl` → após autorizar, `POST /api/zernio/accounts/sync` grava `id_externo_zernio`). Depois 6C (publicar) e 6D (status).
+
+**Plano completo da Fase 6:** `C:\Users\Nov3\.claude\plans\concurrent-watching-quokka.md` (topo do arquivo).
+
+**Rodar o app:** atualizar PATH se preciso, `npm run dev` em `http://localhost:3000` (o servidor de dev encerra entre sessões).
+
 ## Sobre o dono do projeto
 - É **iniciante em programação**. Sempre:
   - Explicar cada passo em **linguagem simples**, sem jargão (ou explicando o jargão).
