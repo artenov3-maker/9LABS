@@ -44,11 +44,6 @@ export default function ConfiguracoesClientePage() {
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<string | null>(null);
 
-  const [plataforma, setPlataforma] =
-    useState<ContaSocial["plataforma"]>("instagram");
-  const [handle, setHandle] = useState("");
-  const [adicionando, setAdicionando] = useState(false);
-
   // Zernio (conexão de contas).
   const [zernioMsg, setZernioMsg] = useState<string | null>(null);
   const [zernioBusy, setZernioBusy] = useState(false);
@@ -104,23 +99,6 @@ export default function ConfiguracoesClientePage() {
     setSalvando(false);
   }
 
-  async function adicionarConta(evento: React.FormEvent) {
-    evento.preventDefault();
-    setAdicionando(true);
-    setErro(null);
-    const { error } = await supabase.from("contas_sociais").insert({
-      cliente_id: clienteId,
-      plataforma,
-      usuario_handle: handle.trim() || null,
-    });
-    if (error) setErro(error.message);
-    else {
-      setHandle("");
-      await carregarTudo();
-    }
-    setAdicionando(false);
-  }
-
   async function removerConta(conta: ContaSocial) {
     if (!window.confirm(`Remover a conta de ${REDES[conta.plataforma]}?`)) return;
     setErro(null);
@@ -132,7 +110,48 @@ export default function ConfiguracoesClientePage() {
     else await carregarTudo();
   }
 
-  // Pede o link de autorização da Zernio e abre numa nova aba.
+  // Conta quantas contas deste cliente já estão conectadas à Zernio.
+  async function contarConectadas() {
+    const { data } = await supabase
+      .from("contas_sociais")
+      .select("id")
+      .eq("cliente_id", clienteId)
+      .not("id_externo_zernio", "is", null);
+    return data?.length ?? 0;
+  }
+
+  // Após abrir o login, fica sincronizando sozinho até a conta aparecer (~1 min).
+  async function autoSincronizar() {
+    const antes = await contarConectadas();
+    let tentativas = 0;
+    const timer = setInterval(async () => {
+      tentativas++;
+      try {
+        await fetch("/api/zernio/accounts/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clienteId }),
+        });
+      } catch {
+        /* ignora e tenta de novo */
+      }
+      const agora = await contarConectadas();
+      if (agora > antes) {
+        clearInterval(timer);
+        setZernioBusy(false);
+        setZernioMsg("✓ Conta conectada e salva!");
+        await carregarTudo();
+      } else if (tentativas >= 20) {
+        clearInterval(timer);
+        setZernioBusy(false);
+        setZernioMsg(
+          "Não detectei a conexão. Se você autorizou na outra aba, clique em “Sincronizar agora”.",
+        );
+      }
+    }, 3000);
+  }
+
+  // Pede o link de autorização da Zernio, abre numa nova aba e começa a detectar.
   async function conectarZernio(plat: ContaSocial["plataforma"]) {
     setZernioBusy(true);
     setZernioMsg(null);
@@ -146,15 +165,17 @@ export default function ConfiguracoesClientePage() {
       if (dados.authUrl) {
         window.open(dados.authUrl, "_blank", "noopener");
         setZernioMsg(
-          "Abrimos a autorização numa nova aba. Depois de autorizar, clique em “Sincronizar contas”.",
+          "Abrimos o login numa nova aba. Autorize por lá — vamos detectar e salvar automaticamente...",
         );
+        autoSincronizar();
       } else {
         setZernioMsg(`Não veio link. Resposta: ${JSON.stringify(dados)}`);
+        setZernioBusy(false);
       }
     } catch (e) {
       setZernioMsg(`Erro: ${(e as Error).message}`);
+      setZernioBusy(false);
     }
-    setZernioBusy(false);
   }
 
   // Após autorizar, busca as contas conectadas e grava os IDs.
@@ -301,42 +322,10 @@ export default function ConfiguracoesClientePage() {
           </ul>
         )}
 
-        <form
-          onSubmit={adicionarConta}
-          className="flex flex-wrap items-end gap-3 border-t border-line pt-4"
-        >
-          <div>
-            <label className="micro-label">Rede</label>
-            <select
-              value={plataforma}
-              onChange={(e) =>
-                setPlataforma(e.target.value as ContaSocial["plataforma"])
-              }
-              className="mt-1 rounded-sm border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-ink"
-            >
-              <option value="instagram">Instagram</option>
-              <option value="facebook">Facebook</option>
-              <option value="tiktok">TikTok</option>
-            </select>
-          </div>
-          <div className="flex-1 min-w-[200px]">
-            <label className="micro-label">Usuário / @ (opcional)</label>
-            <input
-              type="text"
-              value={handle}
-              onChange={(e) => setHandle(e.target.value)}
-              placeholder="@perfil"
-              className="mt-1 w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-ink"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={adicionando}
-            className="rounded-sm border border-line px-4 py-2 text-sm font-medium text-ink transition hover:border-line-strong disabled:opacity-40"
-          >
-            {adicionando ? "Adicionando..." : "Adicionar conta"}
-          </button>
-        </form>
+        <p className="border-t border-line pt-4 text-xs text-muted">
+          As contas aparecem aqui automaticamente quando você conecta uma rede em
+          “Publicação real (Zernio)” abaixo.
+        </p>
       </section>
 
       {/* Conectar via Zernio (publicação real) */}
@@ -362,7 +351,7 @@ export default function ConfiguracoesClientePage() {
             disabled={zernioBusy}
             className="rounded-sm bg-ink px-3 py-2 text-sm font-medium text-surface hover:bg-ink-soft disabled:opacity-40"
           >
-            {zernioBusy ? "Processando..." : "Sincronizar contas"}
+            {zernioBusy ? "Detectando..." : "Sincronizar agora"}
           </button>
         </div>
         {zernioMsg && <p className="text-sm text-ink-soft">{zernioMsg}</p>}
