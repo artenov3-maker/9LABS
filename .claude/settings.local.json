@@ -3,7 +3,9 @@
     "allow": [
       "PowerShell(node --version)",
       "PowerShell(npm --version)",
-      "PowerShell(npx --version)"
+      "PowerShell(npx --version)",
+      "PowerShell($env:Path = [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"User\"\\); Set-Location \"C:\\\\Users\\\\Nov3\\\\Documents\\\\CLAUDE_CODE\\\\9LABS\"; npm run dev)",
+      "PowerShell($ok=$false; for\\($i=0;$i -lt 20;$i++\\){ try{ $r=Invoke-WebRequest -Uri \"http://localhost:3000/api/zernio/ping\" -UseBasicParsing -TimeoutSec 5; \"Status HTTP: $\\($r.StatusCode\\)\"; \"Resposta: $\\($r.Content\\)\"; $ok=$true; break } catch { Start-Sleep -Milliseconds 800 } }; if\\(-not $ok\\){\"servidor ainda iniciando...\"})"
     ]
   }
 }
