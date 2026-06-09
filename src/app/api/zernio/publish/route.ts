@@ -21,6 +21,23 @@ function amigavel(msg: string): string {
   return msg;
 }
 
+// Converte um instante (ISO/UTC) para a "hora de parede" em São Paulo,
+// no formato que a Zernio espera: "YYYY-MM-DDTHH:mm:ss" + timezone à parte.
+function paraLocalSaoPaulo(iso: string): string {
+  const d = new Date(iso);
+  const fmt = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  return fmt.format(d).replace(" ", "T");
+}
+
 // POST /api/zernio/publish  { postId }
 // Envia o post à Zernio para publicar/agendar nas contas conectadas.
 export async function POST(req: Request) {
@@ -76,20 +93,13 @@ export async function POST(req: Request) {
     });
   }
 
-  // Se a data já passou (ou é "agora"), publica na hora; senão, agenda.
-  const agendadoMs = new Date(p.data_agendada).getTime();
-  const publicarAgora = agendadoMs <= Date.now() + 60_000;
-
+  // Sempre AGENDA no horário escolhido (hora local + timezone, como a Zernio espera).
   const payload: Record<string, unknown> = {
     content: p.legenda ?? "",
+    scheduledFor: paraLocalSaoPaulo(p.data_agendada),
     timezone: "America/Sao_Paulo",
     platforms,
   };
-  if (publicarAgora) {
-    payload.publishNow = true;
-  } else {
-    payload.scheduledFor = p.data_agendada;
-  }
   if (p.midias?.url_publica) {
     payload.mediaItems = [
       { url: p.midias.url_publica, type: p.midias.tipo === "video" ? "video" : "image" },
