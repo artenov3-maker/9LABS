@@ -2,6 +2,25 @@ import { NextResponse } from "next/server";
 import { lerCorpo, temChaveZernio, zernioFetch } from "@/lib/zernio";
 import { supabaseServer } from "@/lib/supabaseServer";
 
+// Traduz os erros mais comuns da Zernio para uma frase clara em português.
+function amigavel(msg: string): string {
+  const m = msg.toLowerCase();
+  if (m.includes("media") && (m.includes("require") || m.includes("content"))) {
+    return "Este post precisa de uma imagem ou vídeo. Adicione uma mídia antes de publicar.";
+  }
+  if (
+    m.includes("aspect") ||
+    m.includes("ratio") ||
+    m.includes("resolution") ||
+    m.includes("dimension") ||
+    m.includes("width") ||
+    m.includes("height")
+  ) {
+    return "A imagem está fora do tamanho aceito pelo Instagram. Use uma proporção entre 4:5 (vertical) e 1.91:1 (horizontal) — ex.: 1080×1350 ou 1080×1080.";
+  }
+  return msg;
+}
+
 // POST /api/zernio/publish  { postId }
 // Envia o post à Zernio para publicar/agendar nas contas conectadas.
 export async function POST(req: Request) {
@@ -102,15 +121,18 @@ export async function POST(req: Request) {
         .eq("id", postId);
       return NextResponse.json({ ok: true, idExterno, corpo });
     } else {
-      const msg =
-        typeof corpo === "object" && corpo
-          ? JSON.stringify(corpo)
-          : String(corpo);
+      // Extrai uma frase legível do erro da Zernio (sem JSON cru).
+      const bruto =
+        (typeof corpo === "object" && corpo
+          ? ((corpo as Record<string, unknown>).error as string) ??
+            ((corpo as Record<string, unknown>).message as string)
+          : String(corpo)) ?? "Falha ao publicar.";
+      const motivo = amigavel(bruto);
       await supabaseServer
         .from("posts_agendados")
-        .update({ status: "falhou", erro_mensagem: msg.slice(0, 500) })
+        .update({ status: "falhou", erro_mensagem: motivo.slice(0, 500) })
         .eq("id", postId);
-      return NextResponse.json({ ok: false, status: resp.status, corpo });
+      return NextResponse.json({ ok: false, status: resp.status, motivo, corpo });
     }
   } catch (e) {
     await supabaseServer

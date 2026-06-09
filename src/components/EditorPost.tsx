@@ -88,6 +88,7 @@ export default function EditorPost({
   // Publicação via Zernio.
   const [publicandoZernio, setPublicandoZernio] = useState(false);
   const [zernioMsg, setZernioMsg] = useState<string | null>(null);
+  const [zernioErro, setZernioErro] = useState(false);
 
   // Mídia: menu e modal de biblioteca.
   const [menuMidia, setMenuMidia] = useState(false);
@@ -211,11 +212,12 @@ export default function EditorPost({
     setMenuMidia(false);
   }
 
-  async function salvar(status: Status) {
-    if (!clienteId) return;
+  // Grava o post (cria ou atualiza) e devolve o id. Não mostra o modal de sucesso.
+  async function gravarPost(status: Status): Promise<string | null> {
+    if (!clienteId) return null;
     if (!data || !hora) {
       setErro("Escolha a data e o horário.");
-      return;
+      return null;
     }
     setSalvando(true);
     setErro(null);
@@ -227,7 +229,7 @@ export default function EditorPost({
       status,
     };
 
-    let postIdFinal = postId;
+    let postIdFinal = postId ?? null;
     if (editando && postId) {
       const { error } = await supabase
         .from("posts_agendados")
@@ -236,9 +238,8 @@ export default function EditorPost({
       if (error) {
         setErro(error.message);
         setSalvando(false);
-        return;
+        return null;
       }
-      // Reescreve as ligações de canais.
       await supabase.from("posts_contas").delete().eq("post_id", postId);
     } else {
       const { data: novo, error } = await supabase
@@ -249,7 +250,7 @@ export default function EditorPost({
       if (error || !novo) {
         setErro(error?.message ?? "Falha ao salvar.");
         setSalvando(false);
-        return;
+        return null;
       }
       postIdFinal = novo.id;
     }
@@ -259,32 +260,57 @@ export default function EditorPost({
         .from("posts_contas")
         .insert(canais.map((c) => ({ post_id: postIdFinal, conta_social_id: c })));
     }
-
     setSalvando(false);
-    setSucesso(editando ? "editado" : status === "rascunho" ? "rascunho" : "agendado");
+    return postIdFinal;
   }
 
-  // Envia o post à Zernio (publicar/agendar de verdade).
-  async function publicarZernio() {
-    if (!postId) return;
+  // Salvar local (rascunho/agendado) com a mensagem de sucesso.
+  async function salvar(status: Status) {
+    const id = await gravarPost(status);
+    if (id) {
+      setSucesso(
+        editando ? "editado" : status === "rascunho" ? "rascunho" : "agendado",
+      );
+    }
+  }
+
+  // Publica de verdade pelo id do post; mostra mensagem amigável.
+  async function publicarPorId(id: string) {
     setPublicandoZernio(true);
     setZernioMsg(null);
+    setZernioErro(false);
     try {
       const resp = await fetch("/api/zernio/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ postId }),
+        body: JSON.stringify({ postId: id }),
       });
       const dados = await resp.json();
       if (dados.ok) {
-        setZernioMsg("✓ Enviado para a Zernio! O post foi agendado/publicado de verdade.");
+        setZernioMsg("Publicado/agendado na rede via Zernio com sucesso!");
       } else {
-        setZernioMsg(`Não deu certo: ${dados.motivo ?? JSON.stringify(dados.corpo ?? dados)}`);
+        setZernioErro(true);
+        setZernioMsg(dados.motivo ?? "Não foi possível publicar.");
       }
     } catch (e) {
-      setZernioMsg(`Erro: ${(e as Error).message}`);
+      setZernioErro(true);
+      setZernioMsg(`Erro de conexão: ${(e as Error).message}`);
     }
     setPublicandoZernio(false);
+  }
+
+  // Botão no modo edição.
+  async function publicarZernio() {
+    if (!postId) return;
+    await publicarPorId(postId);
+  }
+
+  // Botão no modo novo: grava e já publica via Zernio.
+  async function agendarEPublicar() {
+    setZernioMsg(null);
+    setZernioErro(false);
+    const id = await gravarPost("agendado");
+    if (id) await publicarPorId(id);
   }
 
   // Pergunta à Zernio o estado atual do post e atualiza o status no painel.
@@ -489,8 +515,23 @@ export default function EditorPost({
           </div>
         </section>
 
-        {erro && <p className="text-sm text-st-falhou">Erro: {erro}</p>}
-        {zernioMsg && <p className="text-sm text-ink-soft">{zernioMsg}</p>}
+        {erro && (
+          <div className="rounded-sm border border-st-falhou/40 bg-st-falhou/10 px-4 py-3 text-sm text-st-falhou">
+            {erro}
+          </div>
+        )}
+        {zernioMsg && (
+          <div
+            className={`rounded-sm px-4 py-3 text-sm ${
+              zernioErro
+                ? "border border-st-falhou/40 bg-st-falhou/10 text-st-falhou"
+                : "border border-st-publicado/40 bg-st-publicado/10 text-st-publicado"
+            }`}
+          >
+            {zernioErro ? "⚠ " : "✓ "}
+            {zernioMsg}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center justify-end gap-4 border-t border-line pt-5">
           {editando && (
@@ -512,26 +553,39 @@ export default function EditorPost({
               </button>
             </div>
           )}
-          {!editando && (
+          {!editando ? (
+            <>
+              <button
+                onClick={() => salvar("rascunho")}
+                disabled={salvando || publicandoZernio}
+                className="text-sm text-ink-soft hover:underline disabled:opacity-40"
+              >
+                Salvar rascunho
+              </button>
+              <button
+                onClick={() => salvar("agendado")}
+                disabled={salvando || publicandoZernio}
+                className="rounded-sm border border-line px-5 py-2.5 text-sm font-medium text-ink transition hover:border-line-strong disabled:opacity-40"
+              >
+                {salvando ? "Salvando..." : "Só agendar (sem publicar)"}
+              </button>
+              <button
+                onClick={agendarEPublicar}
+                disabled={salvando || publicandoZernio}
+                className="rounded-sm bg-ink px-5 py-2.5 text-sm font-medium text-surface transition hover:bg-ink-soft disabled:opacity-40"
+              >
+                {publicandoZernio ? "Publicando..." : "Agendar e publicar"}
+              </button>
+            </>
+          ) : (
             <button
-              onClick={() => salvar("rascunho")}
+              onClick={() => salvar("agendado")}
               disabled={salvando}
-              className="text-sm text-ink-soft hover:underline disabled:opacity-40"
+              className="rounded-sm bg-ink px-5 py-2.5 text-sm font-medium text-surface transition hover:bg-ink-soft disabled:opacity-40"
             >
-              Salvar rascunho
+              {salvando ? "Salvando..." : "Salvar alterações"}
             </button>
           )}
-          <button
-            onClick={() => salvar(editando ? "agendado" : "agendado")}
-            disabled={salvando}
-            className="rounded-sm bg-ink px-5 py-2.5 text-sm font-medium text-surface transition hover:bg-ink-soft disabled:opacity-40"
-          >
-            {salvando
-              ? "Salvando..."
-              : editando
-                ? "Salvar alterações"
-                : "Agendar publicação"}
-          </button>
         </div>
       </div>
 
