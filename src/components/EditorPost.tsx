@@ -25,6 +25,25 @@ const REDES: Record<Plataforma, { nome: string; sigla: string }> = {
   facebook: { nome: "Facebook", sigla: "f" },
   tiktok: { nome: "TikTok", sigla: "TT" },
 };
+
+// Tipos de conteúdo aceitos por plataforma (o que a Zernio suporta).
+const TIPOS_POR_PLATAFORMA: Record<Plataforma, { valor: string; rotulo: string }[]> = {
+  instagram: [
+    { valor: "feed", rotulo: "Feed" },
+    { valor: "story", rotulo: "Story" },
+    { valor: "reels", rotulo: "Reels" },
+  ],
+  facebook: [
+    { valor: "feed", rotulo: "Feed" },
+    { valor: "story", rotulo: "Story" },
+  ],
+  tiktok: [{ valor: "video", rotulo: "Vídeo" }],
+};
+
+function tipoPadrao(plataforma: Plataforma) {
+  return TIPOS_POR_PLATAFORMA[plataforma][0].valor;
+}
+
 const BUCKET = "midias";
 
 function nomeSeguro(nome: string) {
@@ -73,6 +92,8 @@ export default function EditorPost({
   const [midias, setMidias] = useState<Midia[]>([]);
 
   const [canais, setCanais] = useState<string[]>([]);
+  // tipo de conteúdo escolhido por canal (contaId -> "feed"|"story"|"reels"|"video")
+  const [tipoPorCanal, setTipoPorCanal] = useState<Record<string, string>>({});
   const [midiaId, setMidiaId] = useState("");
   const [legenda, setLegenda] = useState("");
   const [data, setData] = useState("");
@@ -120,7 +141,7 @@ export default function EditorPost({
         const { data: post, error } = await supabase
           .from("posts_agendados")
           .select(
-            "cliente_id, midia_id, legenda, data_agendada, status, clientes(nome), posts_contas(conta_social_id)",
+            "cliente_id, midia_id, legenda, data_agendada, status, clientes(nome), posts_contas(conta_social_id, tipo_conteudo)",
           )
           .eq("id", postId)
           .single();
@@ -136,13 +157,18 @@ export default function EditorPost({
           data_agendada: string;
           status: Status;
           clientes: { nome: string } | null;
-          posts_contas: { conta_social_id: string }[];
+          posts_contas: { conta_social_id: string; tipo_conteudo: string | null }[];
         };
         setClienteId(p.cliente_id);
         setClienteNome(p.clientes?.nome ?? "");
         setMidiaId(p.midia_id ?? "");
         setLegenda(p.legenda ?? "");
         setCanais(p.posts_contas.map((x) => x.conta_social_id));
+        setTipoPorCanal(
+          Object.fromEntries(
+            p.posts_contas.map((x) => [x.conta_social_id, x.tipo_conteudo ?? "feed"]),
+          ),
+        );
         const dh = separarDataHora(p.data_agendada);
         setData(dh.data);
         setHora(dh.hora);
@@ -158,6 +184,13 @@ export default function EditorPost({
 
   function alternarCanal(id: string) {
     setCanais((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]));
+    // Ao marcar, define o tipo padrão da plataforma daquela conta.
+    setTipoPorCanal((mapa) => {
+      if (mapa[id]) return mapa;
+      const conta = contas.find((c) => c.id === id);
+      if (!conta) return mapa;
+      return { ...mapa, [id]: tipoPadrao(conta.plataforma) };
+    });
   }
 
   const midiaSelecionada = useMemo(
@@ -169,6 +202,16 @@ export default function EditorPost({
     [contas, canais],
   );
   const handlePreview = contaPreview?.usuario_handle ?? clienteNome ?? "cliente";
+  const tipoPreview = contaPreview
+    ? (tipoPorCanal[contaPreview.id] ?? "feed")
+    : "feed";
+  const rotuloPreview = contaPreview
+    ? `${REDES[contaPreview.plataforma].nome} · ${
+        TIPOS_POR_PLATAFORMA[contaPreview.plataforma].find(
+          (t) => t.valor === tipoPreview,
+        )?.rotulo ?? "Feed"
+      }`
+    : "Instagram · Feed";
 
   // Upload inline (envia novo arquivo já associado ao cliente).
   async function enviarNovoArquivo(arquivo: File) {
@@ -258,7 +301,13 @@ export default function EditorPost({
     if (canais.length > 0 && postIdFinal) {
       await supabase
         .from("posts_contas")
-        .insert(canais.map((c) => ({ post_id: postIdFinal, conta_social_id: c })));
+        .insert(
+          canais.map((c) => ({
+            post_id: postIdFinal,
+            conta_social_id: c,
+            tipo_conteudo: tipoPorCanal[c] ?? "feed",
+          })),
+        );
     }
     setSalvando(false);
     return postIdFinal;
@@ -370,6 +419,7 @@ export default function EditorPost({
               </Link>
             </p>
           ) : (
+            <>
             <div className="flex flex-wrap gap-2">
               {contas.map((conta) => {
                 const sel = canais.includes(conta.id);
@@ -395,6 +445,44 @@ export default function EditorPost({
                 );
               })}
             </div>
+
+            {canais.length > 0 && (
+              <div className="space-y-2 border-t border-line pt-3">
+                <span className="micro-label">Tipo por rede</span>
+                {canais.map((cid) => {
+                  const conta = contas.find((c) => c.id === cid);
+                  if (!conta) return null;
+                  return (
+                    <div key={cid} className="flex items-center gap-3 text-sm">
+                      <span className="w-20 shrink-0 text-muted">
+                        {REDES[conta.plataforma].nome}
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {TIPOS_POR_PLATAFORMA[conta.plataforma].map((op) => {
+                          const at = (tipoPorCanal[cid] ?? "feed") === op.valor;
+                          return (
+                            <button
+                              key={op.valor}
+                              onClick={() =>
+                                setTipoPorCanal((m) => ({ ...m, [cid]: op.valor }))
+                              }
+                              className={`rounded-sm border px-2.5 py-1 text-xs transition ${
+                                at
+                                  ? "border-ink bg-ink text-surface"
+                                  : "border-line text-ink-soft hover:border-line-strong"
+                              }`}
+                            >
+                              {op.rotulo}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            </>
           )}
         </section>
 
@@ -583,7 +671,7 @@ export default function EditorPost({
       <aside className="lg:sticky lg:top-6 lg:self-start">
         <div className="mb-2 flex items-center justify-between">
           <span className="micro-label">Pré-visualização</span>
-          <span className="micro-label">Instagram · feed 4:5</span>
+          <span className="micro-label">{rotuloPreview}</span>
         </div>
         <div className="overflow-hidden rounded-md border border-line bg-white shadow-[0_14px_34px_-22px_rgba(20,18,12,.4)]">
           {/* Cabeçalho IG */}
@@ -596,8 +684,14 @@ export default function EditorPost({
             </span>
             <span className="text-ink">⋯</span>
           </div>
-          {/* Mídia em 4:5 (proporção real do feed) */}
-          <div className="aspect-[4/5] bg-paper">
+          {/* Proporção real: story/reels = 9:16, feed = 4:5 */}
+          <div
+            className={`bg-paper ${
+              tipoPreview === "story" || tipoPreview === "reels"
+                ? "aspect-[9/16]"
+                : "aspect-[4/5]"
+            }`}
+          >
             {midiaSelecionada ? (
               midiaSelecionada.tipo === "imagem" ? (
                 // eslint-disable-next-line @next/next/no-img-element

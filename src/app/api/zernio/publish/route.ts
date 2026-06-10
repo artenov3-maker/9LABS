@@ -38,6 +38,35 @@ function paraLocalSaoPaulo(iso: string): string {
   return fmt.format(d).replace(" ", "T");
 }
 
+// Monta o platformSpecificData conforme a rede e o tipo escolhido (feed/story/reels/video).
+function dadosPorPlataforma(
+  plataforma: string,
+  tipo: string,
+): Record<string, unknown> {
+  if (plataforma === "instagram") {
+    if (tipo === "story") return { contentType: "story" };
+    if (tipo === "reels") return { shareToFeed: true }; // Reels = vídeo vertical
+    return {}; // feed (padrão)
+  }
+  if (plataforma === "facebook") {
+    if (tipo === "story") return { contentType: "story" };
+    return {};
+  }
+  if (plataforma === "tiktok") {
+    return {
+      tiktokSettings: {
+        privacy_level: "PUBLIC_TO_EVERYONE",
+        allow_comment: true,
+        allow_duet: true,
+        allow_stitch: true,
+        content_preview_confirmed: true,
+        express_consent_given: true,
+      },
+    };
+  }
+  return {};
+}
+
 // POST /api/zernio/publish  { postId }
 // Envia o post à Zernio para publicar/agendar nas contas conectadas.
 export async function POST(req: Request) {
@@ -59,7 +88,7 @@ export async function POST(req: Request) {
   const { data: post, error } = await supabaseServer
     .from("posts_agendados")
     .select(
-      "id, legenda, data_agendada, midias(url_publica, tipo), posts_contas(contas_sociais(plataforma, id_externo_zernio))",
+      "id, legenda, data_agendada, midias(url_publica, tipo), posts_contas(tipo_conteudo, contas_sociais(plataforma, id_externo_zernio))",
     )
     .eq("id", postId)
     .single();
@@ -73,17 +102,22 @@ export async function POST(req: Request) {
     data_agendada: string;
     midias: { url_publica: string; tipo: string } | null;
     posts_contas: {
+      tipo_conteudo: string | null;
       contas_sociais: { plataforma: string; id_externo_zernio: string | null } | null;
     }[];
   };
 
-  // Monta a lista de contas conectadas à Zernio.
+  // Monta a lista de contas conectadas à Zernio, com o tipo de conteúdo de cada uma.
   const platforms = p.posts_contas
-    .map((pc) => pc.contas_sociais)
-    .filter((c): c is { plataforma: string; id_externo_zernio: string } =>
-      Boolean(c && c.id_externo_zernio),
-    )
-    .map((c) => ({ platform: c.plataforma, accountId: c.id_externo_zernio }));
+    .filter((pc) => pc.contas_sociais && pc.contas_sociais.id_externo_zernio)
+    .map((pc) => ({
+      platform: pc.contas_sociais!.plataforma,
+      accountId: pc.contas_sociais!.id_externo_zernio as string,
+      platformSpecificData: dadosPorPlataforma(
+        pc.contas_sociais!.plataforma,
+        pc.tipo_conteudo ?? "feed",
+      ),
+    }));
 
   if (platforms.length === 0) {
     return NextResponse.json({
