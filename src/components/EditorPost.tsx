@@ -96,8 +96,10 @@ export default function EditorPost({
   const [tipoPorCanal, setTipoPorCanal] = useState<Record<string, string>>({});
   const [midiaId, setMidiaId] = useState("");
   const [legenda, setLegenda] = useState("");
-  const [data, setData] = useState("");
-  const [hora, setHora] = useState("");
+  // Uma ou mais datas/horas (cada data vira um post agendado).
+  const [datas, setDatas] = useState<{ data: string; hora: string }[]>([
+    { data: "", hora: "" },
+  ]);
 
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
@@ -170,8 +172,7 @@ export default function EditorPost({
           ),
         );
         const dh = separarDataHora(p.data_agendada);
-        setData(dh.data);
-        setHora(dh.hora);
+        setDatas([{ data: dh.data, hora: dh.hora }]);
         await carregarDoCliente(p.cliente_id);
       } else if (clienteIdProp) {
         setClienteId(clienteIdProp);
@@ -255,16 +256,11 @@ export default function EditorPost({
     setMenuMidia(false);
   }
 
-  // Grava o post (cria ou atualiza) e devolve o id. Não mostra o modal de sucesso.
-  async function gravarPost(status: Status): Promise<string | null> {
+  // Grava UM post (cria ou atualiza) para a data informada e devolve o id.
+  async function gravarPost(status: Status, dataHoraISO: string): Promise<string | null> {
     if (!clienteId) return null;
-    if (!data || !hora) {
-      setErro("Escolha a data e o horário.");
-      return null;
-    }
     setSalvando(true);
     setErro(null);
-    const dataHoraISO = new Date(`${data}T${hora}`).toISOString();
     const camposPost = {
       midia_id: midiaId || null,
       legenda: legenda.trim() || null,
@@ -313,9 +309,30 @@ export default function EditorPost({
     return postIdFinal;
   }
 
-  // Salvar local (rascunho/agendado) com a mensagem de sucesso.
+  function isoDe(d: { data: string; hora: string }) {
+    return new Date(`${d.data}T${d.hora}`).toISOString();
+  }
+
+  // Limpa o formulário (para "Agendar outra").
+  function resetForm() {
+    setLegenda("");
+    setMidiaId("");
+    setCanais([]);
+    setTipoPorCanal({});
+    setDatas([{ data: "", hora: "" }]);
+    setErro(null);
+    setZernioMsg(null);
+    setZernioErro(false);
+  }
+
+  // Salvar alterações (modo edição) — usa a primeira/única data.
   async function salvar(status: Status) {
-    const id = await gravarPost(status);
+    const d0 = datas[0];
+    if (!d0?.data || !d0?.hora) {
+      setErro("Escolha a data e o horário.");
+      return;
+    }
+    const id = await gravarPost(status, isoDe(d0));
     if (id) {
       setSucesso(
         editando ? "editado" : status === "rascunho" ? "rascunho" : "agendado",
@@ -360,12 +377,28 @@ export default function EditorPost({
     }
   }
 
-  // Botão "Agendar" (modo novo): grava e agenda na Zernio, com confirmação animada.
+  // Botão "Agendar" (modo novo): cria 1 post por data e agenda cada um na Zernio.
   async function agendarEPublicar() {
-    const id = await gravarPost("agendado");
-    if (!id) return;
-    const ok = await publicarPorId(id);
-    if (ok) setSucesso("agendado");
+    const validas = datas.filter((d) => d.data && d.hora);
+    if (validas.length === 0) {
+      setErro("Escolha pelo menos uma data e horário.");
+      return;
+    }
+    setErro(null);
+    setZernioMsg(null);
+    setZernioErro(false);
+
+    let sucessos = 0;
+    for (const d of validas) {
+      const id = await gravarPost("agendado", isoDe(d));
+      if (!id) break;
+      const ok = await publicarPorId(id);
+      if (!ok) break; // para no 1º erro e mostra a mensagem
+      sucessos++;
+    }
+    if (sucessos > 0 && sucessos === validas.length) {
+      setSucesso("agendado");
+    }
   }
 
   // Pergunta à Zernio o estado atual do post e atualiza o status no painel.
@@ -592,21 +625,58 @@ export default function EditorPost({
 
         {/* 5 Data e horário */}
         <section className="space-y-3">
-          <Etapa n={5} titulo="Data e horário" />
-          <div className="flex flex-wrap gap-3">
-            <input
-              type="date"
-              value={data}
-              onChange={(e) => setData(e.target.value)}
-              className="rounded-sm border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-ink"
-            />
-            <input
-              type="time"
-              value={hora}
-              onChange={(e) => setHora(e.target.value)}
-              className="rounded-sm border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-ink"
-            />
+          <Etapa
+            n={5}
+            titulo={editando ? "Data e horário" : "Datas e horários"}
+          />
+          <div className="space-y-2">
+            {datas.map((d, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-3">
+                <input
+                  type="date"
+                  value={d.data}
+                  onChange={(e) =>
+                    setDatas((arr) =>
+                      arr.map((x, j) =>
+                        j === i ? { ...x, data: e.target.value } : x,
+                      ),
+                    )
+                  }
+                  className="rounded-sm border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-ink"
+                />
+                <input
+                  type="time"
+                  value={d.hora}
+                  onChange={(e) =>
+                    setDatas((arr) =>
+                      arr.map((x, j) =>
+                        j === i ? { ...x, hora: e.target.value } : x,
+                      ),
+                    )
+                  }
+                  className="rounded-sm border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-ink"
+                />
+                {!editando && datas.length > 1 && (
+                  <button
+                    onClick={() =>
+                      setDatas((arr) => arr.filter((_, j) => j !== i))
+                    }
+                    className="text-xs text-muted hover:text-st-falhou hover:underline"
+                  >
+                    remover
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
+          {!editando && (
+            <button
+              onClick={() => setDatas((arr) => [...arr, { data: "", hora: "" }])}
+              className="text-sm text-ink hover:underline"
+            >
+              + adicionar data
+            </button>
+          )}
         </section>
 
         {erro && (
@@ -831,7 +901,10 @@ export default function EditorPost({
                 </button>
               ) : (
                 <button
-                  onClick={() => setSucesso(null)}
+                  onClick={() => {
+                    setSucesso(null);
+                    resetForm();
+                  }}
                   className="rounded-sm border border-line px-4 py-2 text-sm hover:border-line-strong"
                 >
                   Agendar outra
