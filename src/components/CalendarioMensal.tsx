@@ -47,7 +47,15 @@ function hhmm(iso: string) {
   });
 }
 
-export default function CalendarioMensal({ posts }: { posts: PostCal[] }) {
+export default function CalendarioMensal({
+  posts,
+  onExcluir,
+  onDuplicar,
+}: {
+  posts: PostCal[];
+  onExcluir?: (postId: string) => void;
+  onDuplicar?: (postId: string) => void;
+}) {
   const hoje = new Date();
   const [ano, setAno] = useState(hoje.getFullYear());
   const [mes, setMes] = useState(hoje.getMonth());
@@ -188,37 +196,53 @@ export default function CalendarioMensal({ posts }: { posts: PostCal[] }) {
             </div>
             <ul className="space-y-2">
               {postsAbertos.map((p) => (
-                <li key={p.id}>
-                  <Link
-                    href={`/posts/${p.id}`}
-                    className="block rounded-sm border border-line p-3 transition hover:border-line-strong"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">
-                        {hhmm(p.data_agendada)} · {p.clientes?.nome ?? "—"}
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span
-                          className="inline-block h-2 w-2 rounded-full"
-                          style={{ backgroundColor: COR_STATUS[p.status] }}
-                        />
-                        <span className="micro-label">{ROTULO_STATUS[p.status]}</span>
-                      </span>
-                    </div>
-                    {p.redes.length > 0 && (
-                      <div className="mt-1 text-xs text-muted">
-                        {p.redes.join(" · ")}
-                      </div>
-                    )}
-                    {p.legenda && (
-                      <p className="mt-1 line-clamp-2 text-sm text-ink-soft">
-                        {p.legenda}
-                      </p>
-                    )}
-                    <span className="mt-2 inline-block text-xs text-ink">
-                      Abrir e editar →
+                <li
+                  key={p.id}
+                  className="rounded-sm border border-line p-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">
+                      {hhmm(p.data_agendada)} · {p.clientes?.nome ?? "—"}
                     </span>
-                  </Link>
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="inline-block h-2 w-2 rounded-full"
+                        style={{ backgroundColor: COR_STATUS[p.status] }}
+                      />
+                      <span className="micro-label">{ROTULO_STATUS[p.status]}</span>
+                    </span>
+                  </div>
+                  {p.redes.length > 0 && (
+                    <div className="mt-1 text-xs text-muted">
+                      {p.redes.join(" · ")}
+                    </div>
+                  )}
+                  {p.legenda && (
+                    <p className="mt-1 line-clamp-2 text-sm text-ink-soft">
+                      {p.legenda}
+                    </p>
+                  )}
+                  <div className="mt-2 flex items-center gap-4 border-t border-line pt-2 text-xs">
+                    <Link href={`/posts/${p.id}`} className="text-ink hover:underline">
+                      Abrir e editar
+                    </Link>
+                    {onDuplicar && (
+                      <button
+                        onClick={() => onDuplicar(p.id)}
+                        className="text-ink-soft hover:text-ink hover:underline"
+                      >
+                        Duplicar
+                      </button>
+                    )}
+                    {onExcluir && (
+                      <button
+                        onClick={() => onExcluir(p.id)}
+                        className="ml-auto text-muted hover:text-st-falhou hover:underline"
+                      >
+                        Excluir
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
