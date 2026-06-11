@@ -198,6 +198,23 @@ export default function EditorPost({
     () => midias.find((m) => m.id === midiaId) ?? null,
     [midias, midiaId],
   );
+  const midiaEhVideo = midiaSelecionada?.tipo === "video";
+
+  // Reels exige vídeo. Se a mídia não for vídeo, volta os canais "reels" para "feed".
+  useEffect(() => {
+    if (midiaEhVideo) return;
+    setTipoPorCanal((m) => {
+      let mudou = false;
+      const novo: Record<string, string> = {};
+      for (const k of Object.keys(m)) {
+        if (m[k] === "reels") {
+          novo[k] = "feed";
+          mudou = true;
+        } else novo[k] = m[k];
+      }
+      return mudou ? novo : m;
+    });
+  }, [midiaEhVideo]);
   const contaPreview = useMemo(
     () => contas.find((c) => canais.includes(c.id)) ?? null,
     [contas, canais],
@@ -481,7 +498,9 @@ export default function EditorPost({
 
             {canais.length > 0 && (
               <div className="space-y-2 border-t border-line pt-3">
-                <span className="micro-label">Tipo por rede</span>
+                <span className="micro-label">
+                  Tipo por rede{!midiaEhVideo && " · Reels exige vídeo"}
+                </span>
                 {canais.map((cid) => {
                   const conta = contas.find((c) => c.id === cid);
                   if (!conta) return null;
@@ -491,7 +510,9 @@ export default function EditorPost({
                         {REDES[conta.plataforma].nome}
                       </span>
                       <div className="flex flex-wrap gap-1.5">
-                        {TIPOS_POR_PLATAFORMA[conta.plataforma].map((op) => {
+                        {TIPOS_POR_PLATAFORMA[conta.plataforma]
+                          .filter((op) => op.valor !== "reels" || midiaEhVideo)
+                          .map((op) => {
                           const at = (tipoPorCanal[cid] ?? "feed") === op.valor;
                           return (
                             <button
