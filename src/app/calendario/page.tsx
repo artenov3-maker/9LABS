@@ -52,8 +52,28 @@ export default function CalendarioPage() {
   }, [clienteAtivo, verTodos]);
 
   useEffect(() => {
-    carregar();
-  }, [carregar]);
+    let cancelado = false;
+    (async () => {
+      await carregar();
+      // Pergunta à Zernio o status real dos posts já enviados e atualiza se mudou.
+      try {
+        const r = await fetch("/api/zernio/status/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clienteId: verTodos ? null : (clienteAtivo?.id ?? null),
+          }),
+        });
+        const d = await r.json();
+        if (!cancelado && d?.atualizados > 0) await carregar();
+      } catch {
+        /* sem internet/chave: segue com o que já tem */
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [carregar, verTodos, clienteAtivo]);
 
   // Excluir um post pelo calendário.
   async function excluir(postId: string) {
