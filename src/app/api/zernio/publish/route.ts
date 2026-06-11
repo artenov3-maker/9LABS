@@ -73,13 +73,13 @@ export async function POST(req: Request) {
   if (!temChaveZernio()) {
     return NextResponse.json({ ok: false, motivo: "Chave ZERNIO_API_KEY ausente." });
   }
-  let body: { postId?: string };
+  let body: { postId?: string; agora?: boolean };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ ok: false, motivo: "Body inválido." });
   }
-  const { postId } = body;
+  const { postId, agora } = body;
   if (!postId) {
     return NextResponse.json({ ok: false, motivo: "Informe postId." });
   }
@@ -127,13 +127,17 @@ export async function POST(req: Request) {
     });
   }
 
-  // Sempre AGENDA no horário escolhido (hora local + timezone, como a Zernio espera).
+  // "agora" = publica na hora; senão, agenda no horário escolhido.
   const payload: Record<string, unknown> = {
     content: p.legenda ?? "",
-    scheduledFor: paraLocalSaoPaulo(p.data_agendada),
     timezone: "America/Sao_Paulo",
     platforms,
   };
+  if (agora) {
+    payload.publishNow = true;
+  } else {
+    payload.scheduledFor = paraLocalSaoPaulo(p.data_agendada);
+  }
   if (p.midias?.url_publica) {
     payload.mediaItems = [
       { url: p.midias.url_publica, type: p.midias.tipo === "video" ? "video" : "image" },

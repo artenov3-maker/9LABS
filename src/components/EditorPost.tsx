@@ -103,9 +103,9 @@ export default function EditorPost({
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [sucesso, setSucesso] = useState<null | "rascunho" | "agendado" | "editado">(
-    null,
-  );
+  const [sucesso, setSucesso] = useState<
+    null | "rascunho" | "agendado" | "editado" | "publicado"
+  >(null);
 
   // Publicação via Zernio.
   const [publicandoZernio, setPublicandoZernio] = useState(false);
@@ -380,8 +380,8 @@ export default function EditorPost({
   }
 
   // Publica de verdade pelo id do post; mostra mensagem amigável.
-  // Envia o post à Zernio pelo id; devolve true se deu certo.
-  async function publicarPorId(id: string): Promise<boolean> {
+  // Envia o post à Zernio pelo id; devolve true se deu certo. agora = publica na hora.
+  async function publicarPorId(id: string, agora = false): Promise<boolean> {
     setPublicandoZernio(true);
     setZernioMsg(null);
     setZernioErro(false);
@@ -389,7 +389,7 @@ export default function EditorPost({
       const resp = await fetch("/api/zernio/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ postId: id }),
+        body: JSON.stringify({ postId: id, agora }),
       });
       const dados = await resp.json();
       if (dados.ok) {
@@ -438,6 +438,17 @@ export default function EditorPost({
     if (sucessos > 0 && sucessos === validas.length) {
       setSucesso("agendado");
     }
+  }
+
+  // Botão "Publicar agora" (modo novo): cria 1 post (hora atual) e publica na hora.
+  async function publicarAgora() {
+    setErro(null);
+    setZernioMsg(null);
+    setZernioErro(false);
+    const id = await gravarPost("agendado", new Date().toISOString());
+    if (!id) return;
+    const ok = await publicarPorId(id, true);
+    if (ok) setSucesso("publicado");
   }
 
   // Pergunta à Zernio o estado atual do post e atualiza o status no painel.
@@ -761,13 +772,23 @@ export default function EditorPost({
             </div>
           )}
           {!editando ? (
-            <button
-              onClick={agendarEPublicar}
-              disabled={salvando || publicandoZernio}
-              className="rounded-sm bg-ink px-6 py-2.5 text-sm font-medium text-surface transition hover:bg-ink-soft disabled:opacity-40"
-            >
-              {salvando || publicandoZernio ? "Agendando..." : "Agendar"}
-            </button>
+            <>
+              <button
+                onClick={publicarAgora}
+                disabled={salvando || publicandoZernio}
+                className="text-sm text-ink-soft hover:text-ink hover:underline disabled:opacity-40"
+                title="Publica na hora, ignorando a data."
+              >
+                Publicar agora
+              </button>
+              <button
+                onClick={agendarEPublicar}
+                disabled={salvando || publicandoZernio}
+                className="rounded-sm bg-ink px-6 py-2.5 text-sm font-medium text-surface transition hover:bg-ink-soft disabled:opacity-40"
+              >
+                {salvando || publicandoZernio ? "Agendando..." : "Agendar"}
+              </button>
+            </>
           ) : (
             <button
               onClick={() => salvar("agendado")}
@@ -921,12 +942,16 @@ export default function EditorPost({
                 ? "Alterações salvas!"
                 : sucesso === "rascunho"
                   ? "Rascunho salvo!"
-                  : "Publicação agendada!"}
+                  : sucesso === "publicado"
+                    ? "Enviado para publicar!"
+                    : "Publicação agendada!"}
             </h2>
             <p className="mt-1 text-sm text-muted">
-              {sucesso === "agendado"
-                ? "Tudo certo — já aparece no calendário."
-                : "Suas informações foram guardadas."}
+              {sucesso === "publicado"
+                ? "Está publicando na rede — pode levar alguns minutos para aparecer."
+                : sucesso === "agendado"
+                  ? "Tudo certo — já aparece no calendário."
+                  : "Suas informações foram guardadas."}
             </p>
             <div className="mt-6 flex justify-center gap-3">
               <button
