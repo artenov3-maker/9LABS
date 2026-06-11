@@ -44,7 +44,6 @@ function tipoPadrao(plataforma: Plataforma) {
   return TIPOS_POR_PLATAFORMA[plataforma][0].valor;
 }
 
-const BUCKET = "midias";
 
 function nomeSeguro(nome: string) {
   return nome
@@ -231,7 +230,7 @@ export default function EditorPost({
       }`
     : "Instagram · Feed";
 
-  // Upload inline (envia novo arquivo já associado ao cliente).
+  // Upload inline: envia o arquivo DIRETO para a Zernio (sem o limite do Supabase).
   async function enviarNovoArquivo(arquivo: File) {
     const ehImagem = arquivo.type.startsWith("image/");
     const ehVideo = arquivo.type.startsWith("video/");
@@ -241,36 +240,59 @@ export default function EditorPost({
     }
     setEnviando(true);
     setErro(null);
-    const caminho = `${clienteId}/${Date.now()}-${nomeSeguro(arquivo.name)}`;
-    const { error: erroUp } = await supabase.storage
-      .from(BUCKET)
-      .upload(caminho, arquivo);
-    if (erroUp) {
-      setErro(`Falha no upload: ${erroUp.message}`);
-      setEnviando(false);
-      return;
+    try {
+      // 1) Pede o link temporário de upload à Zernio.
+      const r = await fetch("/api/zernio/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: nomeSeguro(arquivo.name),
+          contentType: arquivo.type,
+        }),
+      });
+      const info = await r.json();
+      if (!info.ok || !info.uploadUrl || !info.publicUrl) {
+        setErro(`Falha ao preparar o upload: ${info.motivo ?? "tente de novo."}`);
+        setEnviando(false);
+        return;
+      }
+
+      // 2) Envia o arquivo direto para o storage da Zernio.
+      const put = await fetch(info.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": arquivo.type },
+        body: arquivo,
+      });
+      if (!put.ok) {
+        setErro(`Falha ao enviar o arquivo (${put.status}).`);
+        setEnviando(false);
+        return;
+      }
+
+      // 3) Registra na nossa tabela de mídias (guardando a URL pública da Zernio).
+      const { data: nova, error: erroIns } = await supabase
+        .from("midias")
+        .insert({
+          cliente_id: clienteId,
+          tipo: ehImagem ? "imagem" : "video",
+          url_publica: info.publicUrl,
+          caminho_storage: info.key ?? info.publicUrl,
+          nome_arquivo: arquivo.name,
+        })
+        .select("id, tipo, nome_arquivo, url_publica")
+        .single();
+      if (erroIns || !nova) {
+        setErro(erroIns?.message ?? "Falha ao registrar a mídia.");
+        setEnviando(false);
+        return;
+      }
+      setMidias((lista) => [nova as Midia, ...lista]);
+      setMidiaId((nova as Midia).id);
+      setMenuMidia(false);
+    } catch (e) {
+      setErro(`Erro no upload: ${(e as Error).message}`);
     }
-    const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(caminho);
-    const { data: nova, error: erroIns } = await supabase
-      .from("midias")
-      .insert({
-        cliente_id: clienteId,
-        tipo: ehImagem ? "imagem" : "video",
-        url_publica: pub.publicUrl,
-        caminho_storage: caminho,
-        nome_arquivo: arquivo.name,
-      })
-      .select("id, tipo, nome_arquivo, url_publica")
-      .single();
-    if (erroIns || !nova) {
-      setErro(erroIns?.message ?? "Falha ao registrar a mídia.");
-      setEnviando(false);
-      return;
-    }
-    setMidias((lista) => [nova as Midia, ...lista]);
-    setMidiaId((nova as Midia).id);
     setEnviando(false);
-    setMenuMidia(false);
   }
 
   // Grava UM post (cria ou atualiza) para a data informada e devolve o id.
