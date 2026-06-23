@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -47,6 +47,8 @@ export default function ConfiguracoesClientePage() {
   // Zernio (conexão de contas).
   const [zernioMsg, setZernioMsg] = useState<string | null>(null);
   const [zernioBusy, setZernioBusy] = useState(false);
+  const aguardandoRef = useRef(false); // esperando você autorizar na outra aba
+  const baselineRef = useRef(0); // quantas contas estavam conectadas antes
 
   const carregarTudo = useCallback(async () => {
     setCarregando(true);
@@ -120,36 +122,43 @@ export default function ConfiguracoesClientePage() {
     return data?.length ?? 0;
   }
 
-  // Após abrir o login, fica sincronizando sozinho até a conta aparecer (~1 min).
-  async function autoSincronizar() {
-    const antes = await contarConectadas();
-    let tentativas = 0;
-    const timer = setInterval(async () => {
-      tentativas++;
-      try {
-        await fetch("/api/zernio/accounts/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clienteId }),
-        });
-      } catch {
-        /* ignora e tenta de novo */
+  // Sincroniza e verifica se entrou uma conta nova. Devolve true se entrou.
+  const verificarConexao = useCallback(async (): Promise<boolean> => {
+    try {
+      await fetch("/api/zernio/accounts/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clienteId }),
+      });
+    } catch {
+      /* tenta de novo depois */
+    }
+    const agora = await contarConectadas();
+    if (agora > baselineRef.current) {
+      aguardandoRef.current = false;
+      setZernioBusy(false);
+      setZernioMsg("✓ Conta conectada e salva!");
+      await carregarTudo();
+      return true;
+    }
+    return false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteId]);
+
+  // Detecta automaticamente quando você volta para esta aba após autorizar.
+  useEffect(() => {
+    function aoVoltar() {
+      if (document.visibilityState === "visible" && aguardandoRef.current) {
+        verificarConexao();
       }
-      const agora = await contarConectadas();
-      if (agora > antes) {
-        clearInterval(timer);
-        setZernioBusy(false);
-        setZernioMsg("✓ Conta conectada e salva!");
-        await carregarTudo();
-      } else if (tentativas >= 20) {
-        clearInterval(timer);
-        setZernioBusy(false);
-        setZernioMsg(
-          "Não detectei a conexão. Se você autorizou na outra aba, clique em “Sincronizar agora”.",
-        );
-      }
-    }, 3000);
-  }
+    }
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("focus", aoVoltar);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("focus", aoVoltar);
+    };
+  }, [verificarConexao]);
 
   // Pede o link de autorização da Zernio, abre numa nova aba e começa a detectar.
   async function conectarZernio(plat: ContaSocial["plataforma"]) {
@@ -162,16 +171,37 @@ export default function ConfiguracoesClientePage() {
         body: JSON.stringify({ clienteId: clienteId, platform: plat }),
       });
       const dados = await resp.json();
-      if (dados.authUrl) {
-        window.open(dados.authUrl, "_blank", "noopener");
-        setZernioMsg(
-          "Abrimos o login numa nova aba. Autorize por lá — vamos detectar e salvar automaticamente...",
-        );
-        autoSincronizar();
-      } else {
+      if (!dados.authUrl) {
         setZernioMsg(`Não veio link. Resposta: ${JSON.stringify(dados)}`);
         setZernioBusy(false);
+        return;
       }
+      baselineRef.current = await contarConectadas();
+      aguardandoRef.current = true;
+      window.open(dados.authUrl, "_blank", "noopener");
+      setZernioMsg(
+        "Abrimos o login numa nova aba. Autorize por lá (no Facebook, escolha a Página) — ao voltar para cá, salvamos sozinho.",
+      );
+      // Apoio: também fica tentando por uns 2 minutos.
+      let tentativas = 0;
+      const timer = setInterval(async () => {
+        tentativas++;
+        if (!aguardandoRef.current) {
+          clearInterval(timer);
+          return;
+        }
+        const ok = await verificarConexao();
+        if (ok || tentativas >= 30) {
+          clearInterval(timer);
+          if (!ok) {
+            aguardandoRef.current = false;
+            setZernioBusy(false);
+            setZernioMsg(
+              "Se você já autorizou, clique em “Sincronizar agora”.",
+            );
+          }
+        }
+      }, 4000);
     } catch (e) {
       setZernioMsg(`Erro: ${(e as Error).message}`);
       setZernioBusy(false);
