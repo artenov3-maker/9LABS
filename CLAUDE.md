@@ -82,6 +82,14 @@ npm run lint     # checagem de estilo de código
 > (proporção/resolução corretas de como o post fica no feed). Hoje fazemos uma aproximação realista
 > (frame 4:5 + chrome do IG). A renderização 100% fiel deve vir com a **integração do Post for Me** (Fase 6).
 
+> **Ponto em aberto (conexão de Instagram — avaliar na escolha da integradora):** o dono quer que
+> conectar o Instagram abra o fluxo **via Meta Business** (escolher a conta IG ligada às Páginas,
+> igual o Facebook faz), em vez do **login direto do instagram.com**. Testado na API da Zernio: ela
+> **fixa** o método "Instagram Login direto" e **não expõe parâmetro** (`method`/`loginType` são
+> ignorados) para trocar pelo fluxo via Facebook. Isso depende da config do app da Zernio na Meta —
+> não dá pra resolver pelo nosso código. **Critério para escolher a integradora definitiva:** preferir
+> uma que ofereça conexão de Instagram **via Facebook/Meta Business**. (Alternativa: pedir isso ao suporte da Zernio.)
+
 ## Roadmap (uma fase por vez)
 - **Fase 0**: ✅ fundação — Next.js rodando, CLAUDE.md, GitHub, Supabase + tabelas.
 - **Fase 1**: ✅ telas de Clientes & Contas Sociais.
