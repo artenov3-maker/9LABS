@@ -19,6 +19,8 @@ type Midia = {
   nome_arquivo: string | null;
   url_publica: string;
 };
+// Um "formato" = um tipo de publicação com a sua própria mídia.
+type Formato = { tipo: string; midiaId: string };
 
 const REDES: Record<Plataforma, { nome: string; sigla: string }> = {
   instagram: { nome: "Instagram", sigla: "IG" },
@@ -26,24 +28,19 @@ const REDES: Record<Plataforma, { nome: string; sigla: string }> = {
   tiktok: { nome: "TikTok", sigla: "TT" },
 };
 
-// Tipos de conteúdo aceitos por plataforma (o que a Zernio suporta).
-const TIPOS_POR_PLATAFORMA: Record<Plataforma, { valor: string; rotulo: string }[]> = {
-  instagram: [
-    { valor: "feed", rotulo: "Feed" },
-    { valor: "story", rotulo: "Story" },
-    { valor: "reels", rotulo: "Reels" },
-  ],
-  facebook: [
-    { valor: "feed", rotulo: "Feed" },
-    { valor: "story", rotulo: "Story" },
-  ],
-  tiktok: [{ valor: "video", rotulo: "Vídeo" }],
-};
+const TIPOS = [
+  { valor: "feed", rotulo: "Feed", tamanho: "1080×1350" },
+  { valor: "story", rotulo: "Story", tamanho: "1080×1920" },
+  { valor: "reels", rotulo: "Reels", tamanho: "vídeo 9:16" },
+];
 
-function tipoPadrao(plataforma: Plataforma) {
-  return TIPOS_POR_PLATAFORMA[plataforma][0].valor;
+// Quais redes recebem cada tipo de formato.
+function suporta(plataforma: Plataforma, tipo: string): boolean {
+  if (tipo === "feed") return plataforma === "instagram" || plataforma === "facebook";
+  if (tipo === "story") return plataforma === "instagram" || plataforma === "facebook";
+  if (tipo === "reels") return plataforma === "instagram" || plataforma === "tiktok";
+  return false;
 }
-
 
 function nomeSeguro(nome: string) {
   return nome
@@ -52,7 +49,6 @@ function nomeSeguro(nome: string) {
     .replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-// Converte ISO -> { data: "yyyy-mm-dd", hora: "hh:mm" } no horário local.
 function separarDataHora(iso: string) {
   const d = new Date(iso);
   const p = (n: number) => String(n).padStart(2, "0");
@@ -91,11 +87,10 @@ export default function EditorPost({
   const [midias, setMidias] = useState<Midia[]>([]);
 
   const [canais, setCanais] = useState<string[]>([]);
-  // tipo de conteúdo escolhido por canal (contaId -> "feed"|"story"|"reels"|"video")
-  const [tipoPorCanal, setTipoPorCanal] = useState<Record<string, string>>({});
-  const [midiaId, setMidiaId] = useState("");
   const [legenda, setLegenda] = useState("");
-  // Uma ou mais datas/horas (cada data vira um post agendado).
+  // Formatos a publicar (cada um com sua mídia).
+  const [formatos, setFormatos] = useState<Formato[]>([{ tipo: "feed", midiaId: "" }]);
+  const [formatoAtivo, setFormatoAtivo] = useState(0); // qual formato o menu de mídia mexe
   const [datas, setDatas] = useState<{ data: string; hora: string }[]>([
     { data: "", hora: "" },
   ]);
@@ -107,18 +102,15 @@ export default function EditorPost({
     null | "rascunho" | "agendado" | "editado" | "publicado"
   >(null);
 
-  // Publicação via Zernio.
   const [publicandoZernio, setPublicandoZernio] = useState(false);
   const [zernioMsg, setZernioMsg] = useState<string | null>(null);
   const [zernioErro, setZernioErro] = useState(false);
 
-  // Mídia: menu e modal de biblioteca.
   const [menuMidia, setMenuMidia] = useState(false);
   const [biblioteca, setBiblioteca] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const inputArquivoRef = useRef<HTMLInputElement>(null);
 
-  // Carrega contas + mídias de um cliente.
   const carregarDoCliente = useCallback(async (cid: string) => {
     const { data: c } = await supabase
       .from("contas_sociais")
@@ -134,7 +126,7 @@ export default function EditorPost({
     setMidias((m as Midia[]) ?? []);
   }, []);
 
-  // Setup inicial: edição (carrega o post) ou novo (usa o cliente recebido).
+  // Setup inicial: edição (carrega o post) ou novo.
   useEffect(() => {
     (async () => {
       setCarregando(true);
@@ -162,14 +154,15 @@ export default function EditorPost({
         };
         setClienteId(p.cliente_id);
         setClienteNome(p.clientes?.nome ?? "");
-        setMidiaId(p.midia_id ?? "");
         setLegenda(p.legenda ?? "");
         setCanais(p.posts_contas.map((x) => x.conta_social_id));
-        setTipoPorCanal(
-          Object.fromEntries(
-            p.posts_contas.map((x) => [x.conta_social_id, x.tipo_conteudo ?? "feed"]),
-          ),
-        );
+        // Um post existente = um único formato.
+        setFormatos([
+          {
+            tipo: p.posts_contas[0]?.tipo_conteudo ?? "feed",
+            midiaId: p.midia_id ?? "",
+          },
+        ]);
         const dh = separarDataHora(p.data_agendada);
         setDatas([{ data: dh.data, hora: dh.hora }]);
         await carregarDoCliente(p.cliente_id);
@@ -184,53 +177,34 @@ export default function EditorPost({
 
   function alternarCanal(id: string) {
     setCanais((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]));
-    // Ao marcar, define o tipo padrão da plataforma daquela conta.
-    setTipoPorCanal((mapa) => {
-      if (mapa[id]) return mapa;
-      const conta = contas.find((c) => c.id === id);
-      if (!conta) return mapa;
-      return { ...mapa, [id]: tipoPadrao(conta.plataforma) };
-    });
   }
 
-  const midiaSelecionada = useMemo(
-    () => midias.find((m) => m.id === midiaId) ?? null,
-    [midias, midiaId],
-  );
-  const midiaEhVideo = midiaSelecionada?.tipo === "video";
+  function midiaPorId(id: string) {
+    return midias.find((m) => m.id === id) ?? null;
+  }
 
-  // Reels exige vídeo. Se a mídia não for vídeo, volta os canais "reels" para "feed".
-  useEffect(() => {
-    if (midiaEhVideo) return;
-    setTipoPorCanal((m) => {
-      let mudou = false;
-      const novo: Record<string, string> = {};
-      for (const k of Object.keys(m)) {
-        if (m[k] === "reels") {
-          novo[k] = "feed";
-          mudou = true;
-        } else novo[k] = m[k];
-      }
-      return mudou ? novo : m;
-    });
-  }, [midiaEhVideo]);
-  const contaPreview = useMemo(
-    () => contas.find((c) => canais.includes(c.id)) ?? null,
-    [contas, canais],
-  );
-  const handlePreview = contaPreview?.usuario_handle ?? clienteNome ?? "cliente";
-  const tipoPreview = contaPreview
-    ? (tipoPorCanal[contaPreview.id] ?? "feed")
-    : "feed";
-  const rotuloPreview = contaPreview
-    ? `${REDES[contaPreview.plataforma].nome} · ${
-        TIPOS_POR_PLATAFORMA[contaPreview.plataforma].find(
-          (t) => t.valor === tipoPreview,
-        )?.rotulo ?? "Feed"
-      }`
-    : "Instagram · Feed";
+  // Formato em edição (para o preview e o alvo do menu de mídia).
+  const formatoAtual = formatos[formatoAtivo] ?? formatos[0];
+  const midiaPreview = formatoAtual ? midiaPorId(formatoAtual.midiaId) : null;
 
-  // Upload inline: envia o arquivo DIRETO para a Zernio (sem o limite do Supabase).
+  // Canais selecionados que suportam um dado tipo.
+  const canaisQueSuportam = useCallback(
+    (tipo: string) =>
+      canais.filter((cid) => {
+        const c = contas.find((x) => x.id === cid);
+        return c ? suporta(c.plataforma, tipo) : false;
+      }),
+    [canais, contas],
+  );
+
+  function setMidiaDoFormato(i: number, midiaId: string) {
+    setFormatos((arr) => arr.map((f, j) => (j === i ? { ...f, midiaId } : f)));
+  }
+  function setTipoDoFormato(i: number, tipo: string) {
+    setFormatos((arr) => arr.map((f, j) => (j === i ? { ...f, tipo } : f)));
+  }
+
+  // Upload inline: envia direto para a Zernio e associa ao formato ativo.
   async function enviarNovoArquivo(arquivo: File) {
     const ehImagem = arquivo.type.startsWith("image/");
     const ehVideo = arquivo.type.startsWith("video/");
@@ -241,7 +215,6 @@ export default function EditorPost({
     setEnviando(true);
     setErro(null);
     try {
-      // 1) Pede o link temporário de upload à Zernio.
       const r = await fetch("/api/zernio/upload-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -256,8 +229,6 @@ export default function EditorPost({
         setEnviando(false);
         return;
       }
-
-      // 2) Envia o arquivo direto para o storage da Zernio.
       const put = await fetch(info.uploadUrl, {
         method: "PUT",
         headers: { "Content-Type": arquivo.type },
@@ -268,8 +239,6 @@ export default function EditorPost({
         setEnviando(false);
         return;
       }
-
-      // 3) Registra na nossa tabela de mídias (guardando a URL pública da Zernio).
       const { data: nova, error: erroIns } = await supabase
         .from("midias")
         .insert({
@@ -287,7 +256,7 @@ export default function EditorPost({
         return;
       }
       setMidias((lista) => [nova as Midia, ...lista]);
-      setMidiaId((nova as Midia).id);
+      setMidiaDoFormato(formatoAtivo, (nova as Midia).id);
       setMenuMidia(false);
     } catch (e) {
       setErro(`Erro no upload: ${(e as Error).message}`);
@@ -295,23 +264,29 @@ export default function EditorPost({
     setEnviando(false);
   }
 
-  // Grava UM post (cria ou atualiza) para a data informada e devolve o id.
-  async function gravarPost(status: Status, dataHoraISO: string): Promise<string | null> {
+  // Grava UM post (um formato) para uma data. Devolve o id.
+  async function gravarPost(
+    status: Status,
+    dataHoraISO: string,
+    midiaId: string | null,
+    canaisIds: string[],
+    tipo: string,
+  ): Promise<string | null> {
     if (!clienteId) return null;
     setSalvando(true);
     setErro(null);
-    const camposPost = {
+    const campos = {
       midia_id: midiaId || null,
       legenda: legenda.trim() || null,
       data_agendada: dataHoraISO,
       status,
     };
 
-    let postIdFinal = postId ?? null;
+    let idFinal = postId ?? null;
     if (editando && postId) {
       const { error } = await supabase
         .from("posts_agendados")
-        .update(camposPost)
+        .update(campos)
         .eq("id", postId);
       if (error) {
         setErro(error.message);
@@ -322,7 +297,7 @@ export default function EditorPost({
     } else {
       const { data: novo, error } = await supabase
         .from("posts_agendados")
-        .insert({ cliente_id: clienteId, ...camposPost })
+        .insert({ cliente_id: clienteId, ...campos })
         .select("id")
         .single();
       if (error || !novo) {
@@ -330,61 +305,24 @@ export default function EditorPost({
         setSalvando(false);
         return null;
       }
-      postIdFinal = novo.id;
+      idFinal = novo.id;
     }
 
-    if (canais.length > 0 && postIdFinal) {
-      await supabase
-        .from("posts_contas")
-        .insert(
-          canais.map((c) => ({
-            post_id: postIdFinal,
-            conta_social_id: c,
-            tipo_conteudo: tipoPorCanal[c] ?? "feed",
-          })),
-        );
-    }
-    setSalvando(false);
-    return postIdFinal;
-  }
-
-  function isoDe(d: { data: string; hora: string }) {
-    return new Date(`${d.data}T${d.hora}`).toISOString();
-  }
-
-  // Limpa o formulário (para "Agendar outra").
-  function resetForm() {
-    setLegenda("");
-    setMidiaId("");
-    setCanais([]);
-    setTipoPorCanal({});
-    setDatas([{ data: "", hora: "" }]);
-    setErro(null);
-    setZernioMsg(null);
-    setZernioErro(false);
-  }
-
-  // Salvar alterações (modo edição) — usa a primeira/única data.
-  async function salvar(status: Status) {
-    const d0 = datas[0];
-    if (!d0?.data || !d0?.hora) {
-      setErro("Escolha a data e o horário.");
-      return;
-    }
-    const id = await gravarPost(status, isoDe(d0));
-    if (id) {
-      setSucesso(
-        editando ? "editado" : status === "rascunho" ? "rascunho" : "agendado",
+    if (canaisIds.length > 0 && idFinal) {
+      await supabase.from("posts_contas").insert(
+        canaisIds.map((c) => ({
+          post_id: idFinal,
+          conta_social_id: c,
+          tipo_conteudo: tipo,
+        })),
       );
     }
+    setSalvando(false);
+    return idFinal;
   }
 
-  // Publica de verdade pelo id do post; mostra mensagem amigável.
-  // Envia o post à Zernio pelo id; devolve true se deu certo. agora = publica na hora.
   async function publicarPorId(id: string, agora = false): Promise<boolean> {
     setPublicandoZernio(true);
-    setZernioMsg(null);
-    setZernioErro(false);
     try {
       const resp = await fetch("/api/zernio/publish", {
         method: "POST",
@@ -406,52 +344,100 @@ export default function EditorPost({
     return false;
   }
 
-  // Botão no modo edição: publica e mostra confirmação na faixa verde.
-  async function publicarZernio() {
-    if (!postId) return;
-    const ok = await publicarPorId(postId);
-    if (ok) {
-      setZernioErro(false);
-      setZernioMsg("Agendado na rede via Zernio com sucesso!");
-    }
+  function isoDe(d: { data: string; hora: string }) {
+    return new Date(`${d.data}T${d.hora}`).toISOString();
   }
 
-  // Botão "Agendar" (modo novo): cria 1 post por data e agenda cada um na Zernio.
-  async function agendarEPublicar() {
+  function resetForm() {
+    setLegenda("");
+    setCanais([]);
+    setFormatos([{ tipo: "feed", midiaId: "" }]);
+    setFormatoAtivo(0);
+    setDatas([{ data: "", hora: "" }]);
+    setErro(null);
+    setZernioMsg(null);
+    setZernioErro(false);
+  }
+
+  // Formatos válidos: feed pode ser sem mídia; story/reels precisam de mídia.
+  function formatosValidos() {
+    return formatos.filter((f) => f.midiaId || f.tipo === "feed");
+  }
+
+  // Cria e publica cada formato, em cada data, nas redes que suportam.
+  async function processar(agora: boolean) {
+    if (canais.length === 0) {
+      setErro("Marque pelo menos um canal.");
+      return;
+    }
     const validas = datas.filter((d) => d.data && d.hora);
     if (validas.length === 0) {
       setErro("Escolha pelo menos uma data e horário.");
+      return;
+    }
+    const usar = formatosValidos();
+    if (usar.length === 0) {
+      setErro("Adicione pelo menos um formato com mídia.");
       return;
     }
     setErro(null);
     setZernioMsg(null);
     setZernioErro(false);
 
-    let sucessos = 0;
+    let feitos = 0;
+    let criados = 0;
     for (const d of validas) {
-      const id = await gravarPost("agendado", isoDe(d));
-      if (!id) break;
-      const ok = await publicarPorId(id);
-      if (!ok) break; // para no 1º erro e mostra a mensagem
-      sucessos++;
+      for (const f of usar) {
+        const alvo = canaisQueSuportam(f.tipo);
+        if (alvo.length === 0) continue; // nenhuma rede marcada suporta esse formato
+        criados++;
+        const id = await gravarPost(
+          "agendado",
+          agora ? new Date().toISOString() : isoDe(d),
+          f.midiaId || null,
+          alvo,
+          f.tipo,
+        );
+        if (!id) return;
+        const ok = await publicarPorId(id, agora);
+        if (!ok) return; // para no 1º erro e mostra a mensagem
+        feitos++;
+      }
     }
-    if (sucessos > 0 && sucessos === validas.length) {
-      setSucesso("agendado");
+    if (criados === 0) {
+      setErro("Nenhuma rede marcada suporta os formatos escolhidos.");
+      return;
+    }
+    if (feitos > 0 && feitos === criados) {
+      setSucesso(agora ? "publicado" : "agendado");
     }
   }
 
-  // Botão "Publicar agora" (modo novo): cria 1 post (hora atual) e publica na hora.
-  async function publicarAgora() {
-    setErro(null);
-    setZernioMsg(null);
-    setZernioErro(false);
-    const id = await gravarPost("agendado", new Date().toISOString());
-    if (!id) return;
-    const ok = await publicarPorId(id, true);
-    if (ok) setSucesso("publicado");
+  // Modo edição: salva o único post (um formato, uma data).
+  async function salvar() {
+    const d0 = datas[0];
+    if (!d0?.data || !d0?.hora) {
+      setErro("Escolha a data e o horário.");
+      return;
+    }
+    const f = formatos[0];
+    const id = await gravarPost(
+      "agendado",
+      isoDe(d0),
+      f.midiaId || null,
+      canais,
+      f.tipo,
+    );
+    if (id) setSucesso("editado");
   }
-
-  // Pergunta à Zernio o estado atual do post e atualiza o status no painel.
+  async function publicarZernio() {
+    if (!postId) return;
+    const ok = await publicarPorId(postId, false);
+    if (ok) {
+      setZernioErro(false);
+      setZernioMsg("Agendado na rede via Zernio com sucesso!");
+    }
+  }
   async function atualizarStatus() {
     if (!postId) return;
     setPublicandoZernio(true);
@@ -463,16 +449,27 @@ export default function EditorPost({
         body: JSON.stringify({ postId }),
       });
       const dados = await resp.json();
+      setZernioErro(false);
       setZernioMsg(
         dados.novo
           ? `Status atualizado para: ${dados.novo}.`
           : `Sem mudança de status. (Zernio: ${dados.statusZernio ?? "?"})`,
       );
     } catch (e) {
+      setZernioErro(true);
       setZernioMsg(`Erro: ${(e as Error).message}`);
     }
     setPublicandoZernio(false);
   }
+
+  const handlePreview = useMemo(() => {
+    const conta = contas.find((c) => canais.includes(c.id));
+    return conta?.usuario_handle ?? clienteNome ?? "cliente";
+  }, [contas, canais, clienteNome]);
+
+  const tipoPreview = formatoAtual?.tipo ?? "feed";
+  const rotuloPreview =
+    TIPOS.find((t) => t.valor === tipoPreview)?.rotulo ?? "Feed";
 
   if (carregando) return <p className="text-sm text-muted">Carregando...</p>;
 
@@ -502,7 +499,6 @@ export default function EditorPost({
               </Link>
             </p>
           ) : (
-            <>
             <div className="flex flex-wrap gap-2">
               {contas.map((conta) => {
                 const sel = canais.includes(conta.id);
@@ -528,48 +524,6 @@ export default function EditorPost({
                 );
               })}
             </div>
-
-            {canais.length > 0 && (
-              <div className="space-y-2 border-t border-line pt-3">
-                <span className="micro-label">
-                  Tipo por rede{!midiaEhVideo && " · Reels exige vídeo"}
-                </span>
-                {canais.map((cid) => {
-                  const conta = contas.find((c) => c.id === cid);
-                  if (!conta) return null;
-                  return (
-                    <div key={cid} className="flex items-center gap-3 text-sm">
-                      <span className="w-20 shrink-0 text-muted">
-                        {REDES[conta.plataforma].nome}
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {TIPOS_POR_PLATAFORMA[conta.plataforma]
-                          .filter((op) => op.valor !== "reels" || midiaEhVideo)
-                          .map((op) => {
-                          const at = (tipoPorCanal[cid] ?? "feed") === op.valor;
-                          return (
-                            <button
-                              key={op.valor}
-                              onClick={() =>
-                                setTipoPorCanal((m) => ({ ...m, [cid]: op.valor }))
-                              }
-                              className={`rounded-sm border px-2.5 py-1 text-xs transition ${
-                                at
-                                  ? "border-ink bg-ink text-surface"
-                                  : "border-line text-ink-soft hover:border-line-strong"
-                              }`}
-                            >
-                              {op.rotulo}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            </>
           )}
         </section>
 
@@ -592,97 +546,164 @@ export default function EditorPost({
           </div>
         </section>
 
-        {/* 4 Mídia */}
+        {/* 4 Formatos + mídia */}
         <section className="space-y-3">
-          <Etapa n={4} titulo={`Mídia${midiaSelecionada ? " · 1 selecionada" : ""}`} />
-
-          <div className="flex items-center gap-3">
-            {/* Miniatura da mídia escolhida */}
-            {midiaSelecionada ? (
-              <div className="relative h-20 w-20 overflow-hidden rounded-sm border border-line bg-paper">
-                {midiaSelecionada.tipo === "imagem" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={midiaSelecionada.url_publica}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center">
-                    🎬
-                  </span>
-                )}
-                <button
-                  onClick={() => setMidiaId("")}
-                  className="absolute right-0 top-0 bg-ink px-1 text-[10px] text-surface"
-                  title="Remover"
-                >
-                  ✕
-                </button>
-              </div>
-            ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-sm border border-dashed border-line text-xs text-muted">
-                sem mídia
-              </div>
-            )}
-
-            {/* Botão com menu (enviar novo / biblioteca) */}
-            <div className="relative">
-              <button
-                onClick={() => setMenuMidia((a) => !a)}
-                disabled={enviando}
-                className="rounded-sm border border-line px-4 py-2 text-sm hover:border-line-strong disabled:opacity-40"
-              >
-                {enviando ? "Enviando..." : midiaSelecionada ? "Trocar mídia ▾" : "+ Adicionar mídia ▾"}
-              </button>
-
-              {menuMidia && (
-                <>
-                  <div
-                    className="fixed inset-0 z-10"
-                    onClick={() => setMenuMidia(false)}
-                  />
-                  <div className="absolute left-0 z-20 mt-1 w-56 rounded-md border border-line bg-surface py-1 shadow-[0_14px_34px_-22px_rgba(20,18,12,.4)]">
-                    <button
-                      onClick={() => inputArquivoRef.current?.click()}
-                      className="block w-full px-3 py-2 text-left text-sm hover:bg-paper"
-                    >
-                      ⬆ Enviar novo arquivo
-                    </button>
-                    <button
-                      onClick={() => {
-                        setMenuMidia(false);
-                        setBiblioteca(true);
-                      }}
-                      className="block w-full px-3 py-2 text-left text-sm hover:bg-paper"
-                    >
-                      🗂 Usar biblioteca de mídia
-                    </button>
+          <Etapa n={4} titulo={editando ? "Formato e mídia" : "Formatos e mídia"} />
+          <div className="space-y-3">
+            {formatos.map((f, i) => {
+              const m = midiaPorId(f.midiaId);
+              const alvo = canaisQueSuportam(f.tipo);
+              const ehVideo = m?.tipo === "video";
+              return (
+                <div key={i} className="rounded-sm border border-line p-3">
+                  {/* Escolha do tipo */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {TIPOS.filter((t) => t.valor !== "reels" || ehVideo).map((t) => (
+                      <button
+                        key={t.valor}
+                        onClick={() => setTipoDoFormato(i, t.valor)}
+                        className={`rounded-sm border px-2.5 py-1 text-xs transition ${
+                          f.tipo === t.valor
+                            ? "border-ink bg-ink text-surface"
+                            : "border-line text-ink-soft hover:border-line-strong"
+                        }`}
+                      >
+                        {t.rotulo}
+                      </button>
+                    ))}
+                    <span className="text-[11px] text-muted">
+                      {TIPOS.find((t) => t.valor === f.tipo)?.tamanho}
+                      {!ehVideo && " · Reels exige vídeo"}
+                    </span>
+                    {!editando && formatos.length > 1 && (
+                      <button
+                        onClick={() =>
+                          setFormatos((arr) => arr.filter((_, j) => j !== i))
+                        }
+                        className="ml-auto text-[11px] text-muted hover:text-st-falhou hover:underline"
+                      >
+                        remover formato
+                      </button>
+                    )}
                   </div>
-                </>
-              )}
 
-              <input
-                ref={inputArquivoRef}
-                type="file"
-                accept="image/*,video/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) enviarNovoArquivo(f);
-                  e.target.value = "";
-                }}
-              />
-            </div>
+                  {/* Mídia do formato */}
+                  <div className="mt-3 flex items-center gap-3">
+                    {m ? (
+                      <div className="relative h-20 w-20 overflow-hidden rounded-sm border border-line bg-paper">
+                        {m.tipo === "imagem" ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={m.url_publica}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center">
+                            🎬
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setMidiaDoFormato(i, "")}
+                          className="absolute right-0 top-0 bg-ink px-1 text-[10px] text-surface"
+                          title="Remover mídia"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex h-20 w-20 items-center justify-center rounded-sm border border-dashed border-line text-xs text-muted">
+                        sem mídia
+                      </div>
+                    )}
+
+                    <div className="relative">
+                      <button
+                        onClick={() => {
+                          setFormatoAtivo(i);
+                          setMenuMidia((a) => (formatoAtivo === i ? !a : true));
+                        }}
+                        disabled={enviando}
+                        className="rounded-sm border border-line px-4 py-2 text-sm hover:border-line-strong disabled:opacity-40"
+                      >
+                        {enviando && formatoAtivo === i
+                          ? "Enviando..."
+                          : m
+                            ? "Trocar mídia ▾"
+                            : "+ Adicionar mídia ▾"}
+                      </button>
+                      {menuMidia && formatoAtivo === i && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setMenuMidia(false)}
+                          />
+                          <div className="absolute left-0 z-20 mt-1 w-56 rounded-md border border-line bg-surface py-1 shadow-[0_14px_34px_-22px_rgba(20,18,12,.4)]">
+                            <button
+                              onClick={() => inputArquivoRef.current?.click()}
+                              className="block w-full px-3 py-2 text-left text-sm hover:bg-paper"
+                            >
+                              ⬆ Enviar novo arquivo
+                            </button>
+                            <button
+                              onClick={() => {
+                                setMenuMidia(false);
+                                setBiblioteca(true);
+                              }}
+                              className="block w-full px-3 py-2 text-left text-sm hover:bg-paper"
+                            >
+                              🗂 Usar biblioteca de mídia
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Para quais redes esse formato vai */}
+                  <p className="mt-2 text-[11px] text-muted">
+                    {alvo.length > 0
+                      ? `Vai para: ${alvo
+                          .map((cid) => {
+                            const c = contas.find((x) => x.id === cid);
+                            return c ? REDES[c.plataforma].nome : "";
+                          })
+                          .filter(Boolean)
+                          .join(", ")}`
+                      : "Nenhuma rede marcada suporta esse formato."}
+                  </p>
+                </div>
+              );
+            })}
           </div>
+
+          {!editando && (
+            <button
+              onClick={() =>
+                setFormatos((arr) => [...arr, { tipo: "story", midiaId: "" }])
+              }
+              className="text-sm text-ink hover:underline"
+            >
+              + adicionar formato (ex.: Story)
+            </button>
+          )}
+
+          <input
+            ref={inputArquivoRef}
+            type="file"
+            accept="image/*,video/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) enviarNovoArquivo(f);
+              e.target.value = "";
+            }}
+          />
         </section>
 
-        {/* 5 Data e horário */}
+        {/* 5 Datas */}
         <section className="space-y-3">
-          <Etapa
-            n={5}
-            titulo={editando ? "Data e horário" : "Datas e horários"}
-          />
+          <Etapa n={5} titulo={editando ? "Data e horário" : "Datas e horários"} />
           <div className="space-y-2">
             {datas.map((d, i) => (
               <div key={i} className="flex flex-wrap items-center gap-3">
@@ -691,9 +712,7 @@ export default function EditorPost({
                   value={d.data}
                   onChange={(e) =>
                     setDatas((arr) =>
-                      arr.map((x, j) =>
-                        j === i ? { ...x, data: e.target.value } : x,
-                      ),
+                      arr.map((x, j) => (j === i ? { ...x, data: e.target.value } : x)),
                     )
                   }
                   className="rounded-sm border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-ink"
@@ -703,18 +722,14 @@ export default function EditorPost({
                   value={d.hora}
                   onChange={(e) =>
                     setDatas((arr) =>
-                      arr.map((x, j) =>
-                        j === i ? { ...x, hora: e.target.value } : x,
-                      ),
+                      arr.map((x, j) => (j === i ? { ...x, hora: e.target.value } : x)),
                     )
                   }
                   className="rounded-sm border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-ink"
                 />
                 {!editando && datas.length > 1 && (
                   <button
-                    onClick={() =>
-                      setDatas((arr) => arr.filter((_, j) => j !== i))
-                    }
+                    onClick={() => setDatas((arr) => arr.filter((_, j) => j !== i))}
                     className="text-xs text-muted hover:text-st-falhou hover:underline"
                   >
                     remover
@@ -752,29 +767,36 @@ export default function EditorPost({
         )}
 
         <div className="flex flex-wrap items-center justify-end gap-4 border-t border-line pt-5">
-          {editando && (
-            <div className="mr-auto flex items-center gap-3">
+          {editando ? (
+            <>
+              <div className="mr-auto flex items-center gap-3">
+                <button
+                  onClick={publicarZernio}
+                  disabled={publicandoZernio}
+                  className="rounded-sm border border-ink px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink hover:text-surface disabled:opacity-40"
+                >
+                  {publicandoZernio ? "Enviando..." : "Publicar via Zernio"}
+                </button>
+                <button
+                  onClick={atualizarStatus}
+                  disabled={publicandoZernio}
+                  className="text-sm text-muted hover:text-ink hover:underline disabled:opacity-40"
+                >
+                  Atualizar status
+                </button>
+              </div>
               <button
-                onClick={publicarZernio}
-                disabled={publicandoZernio}
-                className="rounded-sm border border-ink px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink hover:text-surface disabled:opacity-40"
-                title="Salve as alterações antes, depois publique de verdade."
+                onClick={salvar}
+                disabled={salvando}
+                className="rounded-sm bg-ink px-5 py-2.5 text-sm font-medium text-surface transition hover:bg-ink-soft disabled:opacity-40"
               >
-                {publicandoZernio ? "Enviando..." : "Publicar via Zernio"}
+                {salvando ? "Salvando..." : "Salvar alterações"}
               </button>
-              <button
-                onClick={atualizarStatus}
-                disabled={publicandoZernio}
-                className="text-sm text-muted hover:text-ink hover:underline disabled:opacity-40"
-              >
-                Atualizar status
-              </button>
-            </div>
-          )}
-          {!editando ? (
+            </>
+          ) : (
             <>
               <button
-                onClick={publicarAgora}
+                onClick={() => processar(true)}
                 disabled={salvando || publicandoZernio}
                 className="text-sm text-ink-soft hover:text-ink hover:underline disabled:opacity-40"
                 title="Publica na hora, ignorando a data."
@@ -782,43 +804,31 @@ export default function EditorPost({
                 Publicar agora
               </button>
               <button
-                onClick={agendarEPublicar}
+                onClick={() => processar(false)}
                 disabled={salvando || publicandoZernio}
                 className="rounded-sm bg-ink px-6 py-2.5 text-sm font-medium text-surface transition hover:bg-ink-soft disabled:opacity-40"
               >
                 {salvando || publicandoZernio ? "Agendando..." : "Agendar"}
               </button>
             </>
-          ) : (
-            <button
-              onClick={() => salvar("agendado")}
-              disabled={salvando}
-              className="rounded-sm bg-ink px-5 py-2.5 text-sm font-medium text-surface transition hover:bg-ink-soft disabled:opacity-40"
-            >
-              {salvando ? "Salvando..." : "Salvar alterações"}
-            </button>
           )}
         </div>
       </div>
 
-      {/* Preview realista do Instagram */}
+      {/* Preview */}
       <aside className="lg:sticky lg:top-6 lg:self-start">
         <div className="mb-2 flex items-center justify-between">
           <span className="micro-label">Pré-visualização</span>
-          <span className="micro-label">{rotuloPreview}</span>
+          <span className="micro-label">Instagram · {rotuloPreview}</span>
         </div>
         <div className="overflow-hidden rounded-md border border-line bg-white shadow-[0_14px_34px_-22px_rgba(20,18,12,.4)]">
-          {/* Cabeçalho IG */}
           <div className="flex items-center gap-2 px-3 py-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-tr from-ink to-ink-soft text-xs font-semibold text-white">
               {clienteNome ? monograma(clienteNome) : "?"}
             </span>
-            <span className="flex-1 text-sm font-semibold text-ink">
-              {handlePreview}
-            </span>
+            <span className="flex-1 text-sm font-semibold text-ink">{handlePreview}</span>
             <span className="text-ink">⋯</span>
           </div>
-          {/* Proporção real: story/reels = 9:16, feed = 4:5 */}
           <div
             className={`bg-paper ${
               tipoPreview === "story" || tipoPreview === "reels"
@@ -826,17 +836,17 @@ export default function EditorPost({
                 : "aspect-[4/5]"
             }`}
           >
-            {midiaSelecionada ? (
-              midiaSelecionada.tipo === "imagem" ? (
+            {midiaPreview ? (
+              midiaPreview.tipo === "imagem" ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={midiaSelecionada.url_publica}
+                  src={midiaPreview.url_publica}
                   alt=""
                   className="h-full w-full object-cover"
                 />
               ) : (
                 <video
-                  src={midiaSelecionada.url_publica}
+                  src={midiaPreview.url_publica}
                   controls
                   className="h-full w-full object-cover"
                 />
@@ -847,14 +857,12 @@ export default function EditorPost({
               </div>
             )}
           </div>
-          {/* Ações IG */}
           <div className="flex items-center gap-4 px-3 pt-2.5 text-xl text-ink">
             <span>♡</span>
             <span>○</span>
             <span>↗</span>
             <span className="ml-auto">⊟</span>
           </div>
-          {/* Legenda */}
           <div className="px-3 pb-3 pt-1.5">
             <p className="text-xs font-semibold text-ink">{handlePreview}</p>
             <p className="mt-0.5 whitespace-pre-wrap text-xs text-ink-soft">
@@ -890,11 +898,13 @@ export default function EditorPost({
                   <button
                     key={m.id}
                     onClick={() => {
-                      setMidiaId(m.id);
+                      setMidiaDoFormato(formatoAtivo, m.id);
                       setBiblioteca(false);
                     }}
                     className={`aspect-square overflow-hidden rounded-sm border bg-paper ${
-                      m.id === midiaId ? "border-ink ring-1 ring-ink" : "border-line"
+                      m.id === formatoAtual?.midiaId
+                        ? "border-ink ring-1 ring-ink"
+                        : "border-line"
                     }`}
                     title={m.nome_arquivo ?? ""}
                   >
@@ -918,16 +928,11 @@ export default function EditorPost({
         </div>
       )}
 
-      {/* Mensagem de sucesso animada */}
+      {/* Sucesso animado */}
       {sucesso && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink/40 p-4 animate-fade-in">
           <div className="w-full max-w-sm rounded-lg border border-line bg-surface p-8 text-center animate-pop-in">
-            <svg
-              viewBox="0 0 52 52"
-              className="mx-auto h-16 w-16"
-              fill="none"
-              stroke="currentColor"
-            >
+            <svg viewBox="0 0 52 52" className="mx-auto h-16 w-16" fill="none" stroke="currentColor">
               <circle cx="26" cy="26" r="24" className="text-st-publicado/30" strokeWidth="2" />
               <path
                 d="M16 27 l7 7 l14 -16"
