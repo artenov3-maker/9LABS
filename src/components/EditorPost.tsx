@@ -110,6 +110,7 @@ export default function EditorPost({
   const [biblioteca, setBiblioteca] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const inputArquivoRef = useRef<HTMLInputElement>(null);
+  const alvoMidiaRef = useRef(0); // índice do formato que vai receber a mídia
 
   const carregarDoCliente = useCallback(async (cid: string) => {
     const { data: c } = await supabase
@@ -256,7 +257,7 @@ export default function EditorPost({
         return;
       }
       setMidias((lista) => [nova as Midia, ...lista]);
-      setMidiaDoFormato(formatoAtivo, (nova as Midia).id);
+      setMidiaDoFormato(alvoMidiaRef.current, (nova as Midia).id);
       setMenuMidia(false);
     } catch (e) {
       setErro(`Erro no upload: ${(e as Error).message}`);
@@ -620,6 +621,7 @@ export default function EditorPost({
                     <div className="relative">
                       <button
                         onClick={() => {
+                          alvoMidiaRef.current = i;
                           setFormatoAtivo(i);
                           setMenuMidia((a) => (formatoAtivo === i ? !a : true));
                         }}
@@ -640,13 +642,17 @@ export default function EditorPost({
                           />
                           <div className="absolute left-0 z-20 mt-1 w-56 rounded-md border border-line bg-surface py-1 shadow-[0_14px_34px_-22px_rgba(20,18,12,.4)]">
                             <button
-                              onClick={() => inputArquivoRef.current?.click()}
+                              onClick={() => {
+                                alvoMidiaRef.current = i;
+                                inputArquivoRef.current?.click();
+                              }}
                               className="block w-full px-3 py-2 text-left text-sm hover:bg-paper"
                             >
                               ⬆ Enviar novo arquivo
                             </button>
                             <button
                               onClick={() => {
+                                alvoMidiaRef.current = i;
                                 setMenuMidia(false);
                                 setBiblioteca(true);
                               }}
@@ -898,11 +904,11 @@ export default function EditorPost({
                   <button
                     key={m.id}
                     onClick={() => {
-                      setMidiaDoFormato(formatoAtivo, m.id);
+                      setMidiaDoFormato(alvoMidiaRef.current, m.id);
                       setBiblioteca(false);
                     }}
                     className={`aspect-square overflow-hidden rounded-sm border bg-paper ${
-                      m.id === formatoAtual?.midiaId
+                      m.id === formatos[alvoMidiaRef.current]?.midiaId
                         ? "border-ink ring-1 ring-ink"
                         : "border-line"
                     }`}
