@@ -172,7 +172,17 @@ export default function ConfiguracoesClientePage() {
       });
       const dados = await resp.json();
       if (!dados.authUrl) {
-        setZernioMsg(`Não veio link. Resposta: ${JSON.stringify(dados)}`);
+        const texto = JSON.stringify(dados);
+        if (
+          texto.includes("free_tier_exceeded") ||
+          texto.includes("PAYMENT_REQUIRED")
+        ) {
+          setZernioMsg(
+            "Limite do plano grátis da Zernio atingido: ele permite só 2 contas conectadas no total. Para conectar mais, adicione um método de pagamento na Zernio (zernio.com → Billing) ou desconecte uma conta que não usa.",
+          );
+        } else {
+          setZernioMsg(`Não foi possível conectar. ${dados.motivo ?? ""}`);
+        }
         setZernioBusy(false);
         return;
       }
