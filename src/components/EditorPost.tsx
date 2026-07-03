@@ -359,9 +359,9 @@ export default function EditorPost({
     setZernioErro(false);
   }
 
-  // Formatos válidos: feed pode ser sem mídia; story/reels precisam de mídia.
+  // Só publica os formatos que você preencheu com mídia. Sem mídia = não vai.
   function formatosValidos() {
-    return formatos.filter((f) => f.midiaId || f.tipo === "feed");
+    return formatos.filter((f) => f.midiaId);
   }
 
   // Cria e publica cada formato, em cada data, nas redes que suportam.
