@@ -102,8 +102,36 @@ export default function ConfiguracoesClientePage() {
   }
 
   async function removerConta(conta: ContaSocial) {
-    if (!window.confirm(`Remover a conta de ${REDES[conta.plataforma]}?`)) return;
+    if (
+      !window.confirm(
+        `Remover a conta de ${REDES[conta.plataforma]}? Ela também será desconectada da Zernio (libera a vaga).`,
+      )
+    )
+      return;
     setErro(null);
+
+    // 1) Desconecta na Zernio (se estiver conectada lá).
+    if (conta.id_externo_zernio) {
+      try {
+        const resp = await fetch("/api/zernio/accounts/disconnect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountId: conta.id_externo_zernio }),
+        });
+        const dados = await resp.json();
+        if (!dados.ok) {
+          setErro(
+            `Não consegui desconectar na Zernio (${dados.motivo ?? "erro"}). A conta não foi removida.`,
+          );
+          return;
+        }
+      } catch (e) {
+        setErro(`Falha ao desconectar na Zernio: ${(e as Error).message}`);
+        return;
+      }
+    }
+
+    // 2) Remove do nosso banco.
     const { error } = await supabase
       .from("contas_sociais")
       .delete()
